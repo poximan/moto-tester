@@ -7,7 +7,7 @@ from threading import Lock
 READ_ONLY = "read_only"
 WRITE_ENABLED = "write_enabled"
 VALID_WRITE_MODES = {READ_ONLY, WRITE_ENABLED}
-DEFAULT_WRITE_MODE_PATH = Path(__file__).resolve().parents[1] / "runtime" / "write_mode.txt"
+DEFAULT_WRITE_MODE_PATH = Path(__file__).resolve().parents[2] / "runtime" / "write_mode.txt"
 
 
 @dataclass(frozen=True)

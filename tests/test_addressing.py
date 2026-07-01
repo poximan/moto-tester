@@ -1,3 +1,8 @@
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "trasvase-tester"))
+
 from app.addressing import ace_pdu_address, ace_reference, reference_to_pdu
 
 

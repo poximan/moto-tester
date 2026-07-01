@@ -1,12 +1,19 @@
+import sys
 from pathlib import Path
 
 import yaml
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "trasvase-tester"))
 
 from app.config import load_config
 from app.write_mode import READ_ONLY, WRITE_ENABLED, WriteModeStore
 
 
 RUNTIME_SECTIONS = {"server", "controller", "polling", "safety", "runtime"}
+SERVICE_DIR = Path("trasvase-tester")
+SERVICE_APP = SERVICE_DIR / "app"
+FIELD_EMULATOR_DIR = Path("field-emulator")
 
 
 def test_default_config_map():
@@ -29,8 +36,8 @@ def test_yaml_has_no_runtime_parameters():
     assert not (RUNTIME_SECTIONS & set(raw))
 
 
-def test_env_has_no_write_mode_or_write_enable_flags():
-    env = Path(".env").read_text(encoding="utf-8")
+def test_env_example_has_no_write_mode_or_write_enable_flags():
+    env = Path(".env.example").read_text(encoding="utf-8")
     assert "PLC_WRITE_ENABLED" not in env
     assert "ALLOW_REGISTER_WRITES" not in env
     assert "ALLOW_FACADE_WRITES" not in env
@@ -52,10 +59,13 @@ def test_no_run_scripts():
     assert not Path("run.bat").exists()
 
 
-def test_write_mode_file_is_single_persistent_write_source():
-    mode_file = Path("runtime/write_mode.txt")
+def test_write_mode_file_is_created_read_only_by_default(tmp_path):
+    mode_file = tmp_path / "runtime" / "write_mode.txt"
+    store = WriteModeStore(mode_file)
+
     assert mode_file.exists()
     assert mode_file.read_text(encoding="utf-8").strip() == READ_ONLY
+    assert store.snapshot()["mode"] == READ_ONLY
 
 
 def test_write_mode_store_persists_and_fails_closed(tmp_path):
@@ -168,15 +178,15 @@ def test_polling_excludes_injection_memory_from_reads():
     assert not any(s.tag.startswith("y") for s in analog.signals if not s.facade)
     assert not any(s.tag.startswith("y") for s in digital.signals if not s.facade)
 
-    source = Path("app/modbus_client.py").read_text(encoding="utf-8")
+    source = (SERVICE_APP / "modbus_client.py").read_text(encoding="utf-8")
     assert "return [sig for sig in table.signals if not sig.facade]" in source
     assert "La lectura periódica no incluye la zona y*" not in source
     assert "feedback oficial" in source
 
 
 def test_ui_has_sca_tables_and_two_injection_tables():
-    html = Path("app/static/index.html").read_text(encoding="utf-8")
-    js = Path("app/static/app.js").read_text(encoding="utf-8")
+    html = (SERVICE_APP / "static/index.html").read_text(encoding="utf-8")
+    js = (SERVICE_APP / "static/app.js").read_text(encoding="utf-8")
 
     assert "Mapa Modbus de producción" not in html
     assert "sca-table-grid" in html
@@ -190,15 +200,24 @@ def test_ui_has_sca_tables_and_two_injection_tables():
 
 def test_dockerfiles_are_next_to_services_not_root():
     assert not Path("Dockerfile").exists()
-    assert Path("app/Dockerfile").exists()
-    assert Path("field_emulator/Dockerfile").exists()
+    assert not Path("app").exists()
+    assert not Path("field_emulator").exists()
+    assert (SERVICE_DIR / "Dockerfile").exists()
+    assert (FIELD_EMULATOR_DIR / "Dockerfile").exists()
     compose = Path("docker-compose.yml").read_text(encoding="utf-8")
-    assert "dockerfile: app/Dockerfile" in compose
-    assert "dockerfile: field_emulator/Dockerfile" in compose
+    app_dockerfile = (SERVICE_DIR / "Dockerfile").read_text(encoding="utf-8")
+    field_emulator_dockerfile = (FIELD_EMULATOR_DIR / "Dockerfile").read_text(encoding="utf-8")
+    assert "dockerfile: trasvase-tester/Dockerfile" in compose
+    assert "dockerfile: field-emulator/Dockerfile" in compose
+    assert "dockerfile: app/Dockerfile" not in compose
+    assert "dockerfile: field_emulator/Dockerfile" not in compose
+    assert "COPY runtime" not in app_dockerfile
+    assert "COPY trasvase-tester ./trasvase-tester" in app_dockerfile
+    assert "COPY field-emulator ./field-emulator" in field_emulator_dockerfile
 
 
 def test_pump_assets_are_packaged():
-    asset_dir = Path("app/static/assets")
+    asset_dir = SERVICE_APP / "static/assets"
     assert (asset_dir / "pump_gray.png").exists()
     assert (asset_dir / "pump_red.png").exists()
     assert (asset_dir / "pump_blue.png").exists()
@@ -206,8 +225,8 @@ def test_pump_assets_are_packaged():
 
 
 def test_mode_section_removed_and_topbar_toggle_used():
-    html = Path("app/static/index.html").read_text(encoding="utf-8")
-    js = Path("app/static/app.js").read_text(encoding="utf-8")
+    html = (SERVICE_APP / "static/index.html").read_text(encoding="utf-8")
+    js = (SERVICE_APP / "static/app.js").read_text(encoding="utf-8")
     assert "mode-card" not in html
     assert "write-mode-detail" not in html
     assert "toggleWriteMode" in js
@@ -215,9 +234,9 @@ def test_mode_section_removed_and_topbar_toggle_used():
 
 
 def test_front_uses_websocket_stream_and_does_not_poll_refresh_snapshot():
-    html = Path("app/static/index.html").read_text(encoding="utf-8")
-    js = Path("app/static/app.js").read_text(encoding="utf-8")
-    main = Path("app/main.py").read_text(encoding="utf-8")
+    html = (SERVICE_APP / "static/index.html").read_text(encoding="utf-8")
+    js = (SERVICE_APP / "static/app.js").read_text(encoding="utf-8")
+    main = (SERVICE_APP / "main.py").read_text(encoding="utf-8")
 
     assert '/ws/stream' in js
     assert '@app.websocket("/ws/stream")' in main
@@ -227,8 +246,8 @@ def test_front_uses_websocket_stream_and_does_not_poll_refresh_snapshot():
 
 
 def test_digital_injection_is_checkbox_without_extra_set_button():
-    html = Path("app/static/index.html").read_text(encoding="utf-8")
-    js = Path("app/static/app.js").read_text(encoding="utf-8")
+    html = (SERVICE_APP / "static/index.html").read_text(encoding="utf-8")
+    js = (SERVICE_APP / "static/app.js").read_text(encoding="utf-8")
 
     assert '<tbody id="digital-injection-body"></tbody>' in html
     assert '<th>Set</th><th></th>' not in html.split('digital-injection-body')[0].split('analog-injection-body')[-1]
@@ -259,8 +278,8 @@ def test_modbus_points_match_ace3600_formula_ranges():
 
 
 def test_pump_cards_include_arr_emar_generation_and_specific_pills():
-    js = Path("app/static/app.js").read_text(encoding="utf-8")
-    html = Path("app/static/index.html").read_text(encoding="utf-8")
+    js = (SERVICE_APP / "static/app.js").read_text(encoding="utf-8")
+    html = (SERVICE_APP / "static/index.html").read_text(encoding="utf-8")
 
     assert "bB1Arr" in Path("config/default.yaml").read_text(encoding="utf-8")
     assert "generar EMar" in js
@@ -275,9 +294,9 @@ def test_pump_cards_include_arr_emar_generation_and_specific_pills():
 
 
 def test_logs_ui_and_api_are_present():
-    html = Path("app/static/index.html").read_text(encoding="utf-8")
-    js = Path("app/static/app.js").read_text(encoding="utf-8")
-    main = Path("app/main.py").read_text(encoding="utf-8")
+    html = (SERVICE_APP / "static/index.html").read_text(encoding="utf-8")
+    js = (SERVICE_APP / "static/app.js").read_text(encoding="utf-8")
+    main = (SERVICE_APP / "main.py").read_text(encoding="utf-8")
     assert "Diagnóstico y logs" in html
     assert "logs-view" in html
     assert "/api/logs" in js
@@ -287,8 +306,8 @@ def test_logs_ui_and_api_are_present():
 
 
 def test_sca_window_title_shows_modbus_details():
-    js = Path("app/static/app.js").read_text(encoding="utf-8")
-    css = Path("app/static/styles.css").read_text(encoding="utf-8")
+    js = (SERVICE_APP / "static/app.js").read_text(encoding="utf-8")
+    css = (SERVICE_APP / "static/styles.css").read_text(encoding="utf-8")
 
     assert "modbusTitleMeta" in js
     assert "FC${fc}" in js

@@ -1,47 +1,33 @@
-# Python bytecode and caches
+# Secrets and local environment
+.env
+.env.local
+.env.*.local
+
+# Generated runtime state
+runtime/
+*.log
+
+# Python generated files
 __pycache__/
 *.py[cod]
-*$py.class
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 .coverage
-coverage.xml
 htmlcov/
+dist/
+build/
+*.egg-info/
 
-# Virtual environments and local Python tooling
+# Local virtual environments
 .venv/
 venv/
 env/
-ENV/
-pip-wheel-metadata/
-*.egg-info/
-dist/
-build/
 
-# Environment files and secrets
-.env
-.env.*
-!.env.example
-*.pem
-*.key
-*.crt
-*.p12
-*.pfx
-
-# Runtime state and generated logs
-runtime/
-*.log
-
-# Docker/local override files
-docker-compose.override.yml
-
-# Editor and OS noise
+# Tooling/editor/OS noise
+.agents/
 .vscode/
 .idea/
-*.swp
-*.swo
-*~
 .DS_Store
 Thumbs.db
 desktop.ini

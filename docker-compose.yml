@@ -2,7 +2,7 @@ services:
   trasvase-tester:
     build:
       context: .
-      dockerfile: app/Dockerfile
+      dockerfile: trasvase-tester/Dockerfile
     container_name: trasvase-tester
     env_file:
       - .env
@@ -24,7 +24,7 @@ services:
   field-emulator:
     build:
       context: .
-      dockerfile: field_emulator/Dockerfile
+      dockerfile: field-emulator/Dockerfile
     container_name: field-emulator
     env_file:
       - .env

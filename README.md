@@ -13,10 +13,10 @@ La solución contiene tres componentes dockerizados:
 Hay una separación estricta:
 
 - `.env`: **única fuente de verdad para parámetros runtime fijos**: PLC, puerto web interno, puerto publicado en el host, polling, timeouts, modo simulación y parámetros del servicio experto.
-- `runtime/write_mode.txt`: **única fuente de verdad del modo de escritura**, persistente y editable como texto. Valores válidos: `read_only` o `write_enabled`.
+- `runtime/write_mode.txt`: **única fuente de verdad del modo de escritura**, persistente y editable como texto. Se crea automáticamente en `read_only` si no existe. Valores válidos: `read_only` o `write_enabled`.
 - `config/default.yaml`: **solo mapa Modbus y estructura de señales**: tablas, tags, filas, tipos y marcas de inyección.
 
-El `docker-compose.yml` no redefine parámetros de aplicación: carga `.env` con `env_file`, usa `WEB_PORT` como puerto interno, usa `WEB_HOST_PORT` como puerto publicado en el host y monta `./runtime` tanto en el contenedor web como en el emulador para persistir modo y estado. El código rechaza `server`, `controller`, `polling`, `safety` o `runtime` dentro de `config/default.yaml`.
+El `docker-compose.yml` no redefine parámetros de aplicación: carga `.env` con `env_file`, usa `WEB_PORT` como puerto interno, usa `WEB_HOST_PORT` como puerto publicado en el host y monta `./runtime` tanto en el contenedor web como en el emulador para persistir modo y estado. La carpeta `runtime/` es local y generada; no forma parte de la imagen ni del repositorio. El código rechaza `server`, `controller`, `polling`, `safety` o `runtime` dentro de `config/default.yaml`.
 
 ## Etapa 1: observación
 
@@ -49,7 +49,7 @@ Las tablas de lecturas quedan exactamente como el intercambio informado:
 Editar `.env` y luego ejecutar:
 
 ```bash
-cd trasvase-tester
+# desde la raíz del repositorio
 docker compose up --build
 ```
 
@@ -59,7 +59,7 @@ Abrir la URL formada con `WEB_HOST_PORT` definido en `.env`, por defecto:
 http://localhost:8087
 ```
 
-No hay scripts `run.sh` ni `run.bat`; la entrada operativa estándar es Docker Compose. En la raíz solo queda `docker-compose.yml` como archivo Docker; los Dockerfile están junto al servicio que construyen: `app/Dockerfile` y `field_emulator/Dockerfile`.
+No hay scripts `run.sh` ni `run.bat`; la entrada operativa estándar es Docker Compose. En la raíz solo queda `docker-compose.yml` como archivo Docker; los Dockerfile están dentro de la carpeta del servicio que construyen: `trasvase-tester/Dockerfile` y `field-emulator/Dockerfile`.
 
 ## Desarrollo sin PLC
 
@@ -182,23 +182,25 @@ Direcciones relevantes de inyección:
 ## Estructura del proyecto
 
 ```text
-.env                 Parámetros runtime fijos.
-runtime/write_mode.txt Modo persistente de escritura: read_only/write_enabled.
-docker-compose.yml   Orquestación de servicios; carga .env y monta runtime/.
-app/
-  Dockerfile         Imagen del servidor web + master Modbus.
-
-  main.py            FastAPI + endpoints.
-  modbus_client.py   Poller Modbus/TCP y modo simulación.
-  config.py          Carga de .env + mapa Modbus; valida separación de responsabilidades.
-  addressing.py      Conversión Modicon <-> PDU.
-  state.py           Estado runtime, snapshots, cola de escritura.
-  write_mode.py      Lectura/escritura persistente de runtime/write_mode.txt.
-  static/            UI web: tablas SCA, bombas, válvulas e inyecciones separadas.
-    assets/           PNGs de bombas por estado.
-field_emulator/
+.env.example         Plantilla de parámetros runtime fijos.
+docker-compose.yml   Orquestación de servicios; carga .env y monta runtime/ local.
+runtime/             Estado local generado: write_mode.txt, logs y estado del emulador.
+trasvase-tester/
+  Dockerfile         Imagen del servicio web + master Modbus.
+  app/               Paquete Python importable del servicio.
+    main.py          FastAPI + endpoints.
+    modbus_client.py Poller Modbus/TCP y modo simulación.
+    config.py        Carga de .env + mapa Modbus; valida separación de responsabilidades.
+    addressing.py    Conversión Modicon <-> PDU.
+    state.py         Estado runtime, snapshots, cola de escritura.
+    write_mode.py    Lectura/escritura persistente de runtime/write_mode.txt.
+    static/          UI web: tablas SCA, bombas, válvulas e inyecciones separadas.
+      assets/        PNGs de bombas por estado.
+field-emulator/
   Dockerfile         Imagen del servicio experto.
-  main.py            Modelo de niveles + escritura yNvCamAsp/yNvRes.
+  requirements.txt   Dependencias del servicio experto.
+  field_emulator/    Paquete Python importable del servicio.
+    main.py          Modelo de niveles + escritura yNvCamAsp/yNvRes.
 config/
   default.yaml       Solo mapa Modbus y señales.
 docs/
@@ -211,8 +213,8 @@ tests/
 
 ## Seguridad operativa
 
-- El paquete se entrega con `runtime/write_mode.txt` en `read_only`.
-- Hay una sola llave de escritura: `runtime/write_mode.txt`.
+- Si `runtime/write_mode.txt` no existe, la aplicación lo crea en `read_only`.
+- Hay una sola llave persistente de escritura: `runtime/write_mode.txt`.
 - `read_only`: no escribe al PLC; refleja el pedido localmente para prueba de UI/API.
 - `write_enabled`: permite escribir todos los tags marcados como `writable: true`, incluyendo `cB#*` y `y*`.
 - El modo puede consultarse con `GET /api/write-mode` y cambiarse con `PUT /api/write-mode`; el cambio queda persistido en el archivo de texto.

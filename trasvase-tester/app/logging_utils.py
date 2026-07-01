@@ -9,8 +9,8 @@ def runtime_root() -> Path:
     raw = os.getenv("RUNTIME_DIR")
     if raw:
         return Path(raw)
-    # repo/app/logging_utils.py -> repo/runtime in local and /app/runtime in Docker
-    return Path(__file__).resolve().parents[1] / "runtime"
+    # repo/trasvase-tester/app/logging_utils.py -> repo/runtime.
+    return Path(__file__).resolve().parents[2] / "runtime"
 
 
 def log_dir() -> Path:
