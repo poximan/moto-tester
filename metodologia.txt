@@ -1,0 +1,57 @@
+1. Criterios generales de arquitectura y diseno
+- Separar responsabilidades por modulos o bounded contexts, para no mezclar canal, negocio, operacion, persistencia, integraciones externas y servicios auxiliares.
+- Definir fronteras claras entre modulos, de modo que cada uno tenga una y solo responsabilidad dominante y una interfaz de comunicacion explicita.
+- Centralizar la logica de negocio y las reglas de estado en un unico nucleo o fuente de verdad, evitando que la UI, adaptadores o integraciones externas dupliquen criterio.
+- Mantener una ruta unica y controlada para operaciones criticas, con el fin de mejorar trazabilidad, control de formato y consistencia operativa.
+- Desacoplar el dominio interno de las APIs externas mediante modulos adaptadores o gateways.
+- Aislar capacidades complementarias o especializadas fuera del nucleo principal, para que el core permanezca enfocado en su responsabilidad de orquestador o de visión global.
+- Definir explicitamente los modos de trabajo, perfiles o actores del sistema, asi como sus permisos, alcance funcional y canal de acceso.
+
+2. Criterios de integracion y comunicacion entre componentes
+- Restringir la intercomunicacion entre proyectos o modulos a mecanismos explicitamente autorizados.
+- No introducir canales alternativos no previstos para la comunicacion entre componentes.
+- Preservar contratos de integracion claros entre productores y consumidores.
+- Hacer que cada consumidor use solo las interfaces que le corresponden, sin bypass ni accesos directos a capas que no le pertenecen.
+- Tratar a ciertos modulos como adaptadores de canal, responsables de traducir entre el dominio interno y protocolos o APIs externas.
+
+3. Criterios de robustez y manejo de errores
+- Trabajar sin estrategias de fallback.
+- No ocultar fallas con valores por defecto, comportamientos alternativos ni retrocompatibilidades improvisadas.
+- Usar contratos duros: si un dato es obligatorio, se asume presente; si no esta, el sistema debe fallar de manera visible.
+- Ante datos indispensables ausentes o imposibilidad de continuar, reportar el problema explicitamente y abortar la ejecucion.
+- Hacer visibles las fallas por log o salida en pantalla, evitando degradaciones silenciosas.
+- Favorecer consistencia y explicitud por encima de tolerancia blanda a errores.
+- Aceptar cambios destructivos cuando el criterio del proyecto asi lo define, por ejemplo en modelos de datos sin retrocompatibilidad.
+
+4. Criterios de persistencia y consistencia
+- Considerar una unica fuente de verdad para estados y reglas.
+- Persistir estados y mensajes de manera controlada y consistente.
+- Separar el registro transaccional del disparo de eventos cuando se requiera robustez frente a caidas o reintentos.
+- Evitar que clientes, frontends o modulos perifericos alteren de hecho la verdad del sistema por fuera del nucleo definido.
+
+5. Criterios de pruebas
+- Probar el sistema de forma black-box siempre que sea posible.
+- Recorrer los flujos reales del sistema a traves de sus puntos de entrada normales, no mediante accesos internos o escritura directa en base de datos.
+- Validar comportamiento, carga y trazabilidad sin romper el desacople entre modulos.
+- Hacer que los tests respeten la arquitectura y no la salteen.
+
+6. Criterios de implementacion y edicion de codigo
+- Nunca hacer build ni run; solo editar codigo.
+- Mantener codificacion UTF-8 en archivos.
+- Escribir comentarios en castellano, sin tildes y sin letra enie.
+- En Android, siempre centralizar textos en recursos en lugar de hardcodearlos en destino.
+
+7. Patrones metodologicos
+- Enfoque de arquitectura modular.
+- Enfoque event-driven para propagacion de cambios y coordinacion entre componentes.
+- Enfoque de separacion estricta de incumbencias.
+- Enfoque fail-fast ante configuracion incompleta o inconsistente.
+- Enfoque contract-first o de contratos duros.
+- Enfoque de fuente de verdad centralizada.
+- Enfoque de integracion por interfaces y no por acoplamiento directo.
+- Enfoque de pruebas por comportamiento observable.
+- Enfoque de no ocultamiento del error.
+- Enfoque de consistencia operativa por encima de compatibilidad blanda.
+- Enfoque de disciplina de edicion sobre el codigo existente, respetando encoding, comentarios y formato de archivo.
+
+por ultimo, siempre que me contestes algo, hacelo en castellano.

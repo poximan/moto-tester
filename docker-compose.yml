@@ -1,0 +1,44 @@
+services:
+  trasvase-tester:
+    build:
+      context: .
+      dockerfile: app/Dockerfile
+    container_name: trasvase-tester
+    env_file:
+      - .env
+    ports:
+      - "0.0.0.0:${WEB_HOST_PORT}:${WEB_PORT}"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:${WEB_PORT}/api/health', timeout=2).read()\""]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    volumes:
+      - ./runtime:/app/runtime
+    restart: unless-stopped
+    networks:
+      - default
+      - edge
+
+  field-emulator:
+    build:
+      context: .
+      dockerfile: field_emulator/Dockerfile
+    container_name: field-emulator
+    env_file:
+      - .env
+    environment:
+      TESTER_API_URL: "http://trasvase-tester:${WEB_PORT}"
+    depends_on:
+      trasvase-tester:
+        condition: service_healthy
+    volumes:
+      - ./runtime:/runtime
+    restart: unless-stopped
+
+networks:
+  default:
+  edge:
+    name: servicoop-edge-net
+    external: true

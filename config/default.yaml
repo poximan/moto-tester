@@ -1,0 +1,578 @@
+project:
+  name: trasvase-tester
+  description: Tester web + master Modbus/TCP para frontera de emulación de bombas
+    de trasvase
+addressing:
+  mode: modicon_reference
+tables:
+  analog_reads:
+    label: SCA - lectura AN [0]
+    kind: input_register
+    start_ref: 30001
+    count: 26
+    data_type: int16
+    writable: false
+    signals:
+    - row: 0
+      tag: eNvCamAsp
+      label: Nivel cámara de aspiración
+    - row: 1
+      tag: eNvRes
+      label: Nivel reserva
+    - row: 2
+      tag: eTurb
+      label: Turbiedad
+    - row: 9
+      tag: eB1Hs
+      label: Bomba 1 horas
+    - row: 13
+      tag: eB2Hs
+      label: Bomba 2 horas
+    - row: 17
+      tag: eB3Hs
+      label: Bomba 3 horas
+    - row: 21
+      tag: eB4Hs
+      label: Bomba 4 horas
+    - row: 25
+      tag: eB5Hs
+      label: Bomba 5 horas
+  analog_setpoints:
+    label: SCA - consigna AN [1]
+    kind: holding_register
+    start_ref: 42049
+    count: 35
+    data_type: int16
+    writable: false
+    signals:
+    - row: 0
+      tag: gResSp
+      label: Reserva SP
+      default: 6000
+    - row: 1
+      tag: gResRb
+      label: Reserva rebalse
+      default: 5000
+    - row: 2
+      tag: gResAt
+      label: Reserva nivel alto
+      default: 4700
+    - row: 4
+      tag: gResParA
+      label: Reserva parada A
+      default: 4500
+    - row: 5
+      tag: gResParB
+      label: Reserva parada B
+      default: 4300
+    - row: 6
+      tag: gResParC
+      label: Reserva parada C
+      default: 4100
+    - row: 7
+      tag: gResParD
+      label: Reserva parada D
+      default: 3900
+    - row: 9
+      tag: gResArrA
+      label: Reserva arranque A
+      default: 1500
+    - row: 10
+      tag: gResArrB
+      label: Reserva arranque B
+      default: 1200
+    - row: 11
+      tag: gResArrC
+      label: Reserva arranque C
+      default: 1100
+    - row: 12
+      tag: gResArrD
+      label: Reserva arranque D
+      default: 1000
+    - row: 14
+      tag: gResBj
+      label: Reserva nivel bajo
+      default: 600
+    - row: 15
+      tag: gResFn
+      label: Reserva fin
+      default: -1
+    - row: 18
+      tag: gCamRb
+      label: Cámara rebalse
+      default: 4000
+    - row: 19
+      tag: gCamAt
+      label: Cámara nivel alto
+      default: 3500
+    - row: 20
+      tag: gCamBj
+      label: Cámara nivel bajo
+      default: 600
+    - row: 21
+      tag: gCamFn
+      label: Cámara fin
+      default: 0
+    - row: 27
+      tag: yNvCamAsp
+      label: Inyección lectura analógica - Nivel cámara de aspiración
+      facade: true
+      writable: true
+      injects_tag: eNvCamAsp
+      injection_group: analog_reads
+    - row: 28
+      tag: yNvRes
+      label: Inyección lectura analógica - Nivel reserva
+      facade: true
+      writable: true
+      injects_tag: eNvRes
+      injection_group: analog_reads
+    - row: 29
+      tag: yTurb
+      label: Inyección lectura analógica - Turbiedad
+      facade: true
+      writable: true
+      injects_tag: eTurb
+      injection_group: analog_reads
+    - row: 30
+      tag: yB1Hs
+      label: Inyección lectura analógica - Bomba 1 horas
+      facade: true
+      writable: true
+      injects_tag: eB1Hs
+      injection_group: analog_reads
+    - row: 31
+      tag: yB2Hs
+      label: Inyección lectura analógica - Bomba 2 horas
+      facade: true
+      writable: true
+      injects_tag: eB2Hs
+      injection_group: analog_reads
+    - row: 32
+      tag: yB3Hs
+      label: Inyección lectura analógica - Bomba 3 horas
+      facade: true
+      writable: true
+      injects_tag: eB3Hs
+      injection_group: analog_reads
+    - row: 33
+      tag: yB4Hs
+      label: Inyección lectura analógica - Bomba 4 horas
+      facade: true
+      writable: true
+      injects_tag: eB4Hs
+      injection_group: analog_reads
+    - row: 34
+      tag: yB5Hs
+      label: Inyección lectura analógica - Bomba 5 horas
+      facade: true
+      writable: true
+      injects_tag: eB5Hs
+      injection_group: analog_reads
+  digital_reads:
+    label: SCA - lectura DI [2]
+    kind: discrete_input
+    start_ref: 14097
+    count: 81
+    writable: false
+    signals:
+    - row: 0
+      tag: bRFF
+      label: Referencia/Fallo general
+    - row: 5
+      tag: bResRb
+      label: Reserva rebalse
+    - row: 6
+      tag: bResAt
+      label: Reserva alto
+    - row: 7
+      tag: bResBj
+      label: Reserva bajo
+    - row: 8
+      tag: bResNvAtP
+      label: Reserva nivel alto pera
+    - row: 9
+      tag: bResNvBjP
+      label: Reserva nivel bajo pera
+    - row: 14
+      tag: bCAspRb
+      label: Cámara aspiración rebalse
+    - row: 15
+      tag: bCAspAt
+      label: Cámara aspiración alto
+    - row: 16
+      tag: bCAspBj
+      label: Cámara aspiración bajo
+    - row: 17
+      tag: bCAspNvAtP
+      label: Cámara aspiración nivel alto pera
+    - row: 18
+      tag: bCAspNvBjP
+      label: Cámara aspiración nivel bajo pera
+    - row: 26
+      tag: bB1RTU
+      label: Bomba 1 RTU
+    - row: 27
+      tag: bB1Aut
+      label: Bomba 1 automático
+    - row: 28
+      tag: bB1Ok
+      label: Bomba 1 ok
+    - row: 29
+      tag: bB1EMar
+      label: Bomba 1 en marcha
+    - row: 30
+      tag: bB1Bypass
+      label: Bomba 1 bypass
+    - row: 31
+      tag: bB1InE
+      label: Bomba 1 interlock/enclavamiento
+    - row: 32
+      tag: bB1Falla
+      label: Bomba 1 falla
+    - row: 33
+      tag: bB1Arr
+      label: Bomba 1 arranque
+    - row: 38
+      tag: bB2RTU
+      label: Bomba 2 RTU
+    - row: 39
+      tag: bB2Aut
+      label: Bomba 2 automático
+    - row: 40
+      tag: bB2Ok
+      label: Bomba 2 ok
+    - row: 41
+      tag: bB2EMar
+      label: Bomba 2 en marcha
+    - row: 42
+      tag: bB2Bypass
+      label: Bomba 2 bypass
+    - row: 43
+      tag: bB2InE
+      label: Bomba 2 interlock/enclavamiento
+    - row: 44
+      tag: bB2Falla
+      label: Bomba 2 falla
+    - row: 45
+      tag: bB2Arr
+      label: Bomba 2 arranque
+    - row: 50
+      tag: bB3RTU
+      label: Bomba 3 RTU
+    - row: 51
+      tag: bB3Aut
+      label: Bomba 3 automático
+    - row: 52
+      tag: bB3Ok
+      label: Bomba 3 ok
+    - row: 53
+      tag: bB3EMar
+      label: Bomba 3 en marcha
+    - row: 54
+      tag: bB3Bypass
+      label: Bomba 3 bypass
+    - row: 55
+      tag: bB3InE
+      label: Bomba 3 interlock/enclavamiento
+    - row: 56
+      tag: bB3Falla
+      label: Bomba 3 falla
+    - row: 57
+      tag: bB3Arr
+      label: Bomba 3 arranque
+    - row: 61
+      tag: bB4RTU
+      label: Bomba 4 RTU
+    - row: 62
+      tag: bB4Aut
+      label: Bomba 4 automático
+    - row: 63
+      tag: bB4Ok
+      label: Bomba 4 ok
+    - row: 64
+      tag: bB4EMar
+      label: Bomba 4 en marcha
+    - row: 65
+      tag: bB4Bypass
+      label: Bomba 4 bypass
+    - row: 66
+      tag: bB4InE
+      label: Bomba 4 interlock/enclavamiento
+    - row: 67
+      tag: bB4Falla
+      label: Bomba 4 falla
+    - row: 68
+      tag: bB4Arr
+      label: Bomba 4 arranque
+    - row: 73
+      tag: bB5RTU
+      label: Bomba 5 RTU
+    - row: 74
+      tag: bB5Aut
+      label: Bomba 5 automático
+    - row: 75
+      tag: bB5Ok
+      label: Bomba 5 ok
+    - row: 76
+      tag: bB5EMar
+      label: Bomba 5 en marcha
+    - row: 77
+      tag: bB5Bypass
+      label: Bomba 5 bypass
+    - row: 78
+      tag: bB5InE
+      label: Bomba 5 interlock/enclavamiento
+    - row: 79
+      tag: bB5Falla
+      label: Bomba 5 falla
+    - row: 80
+      tag: bB5Arr
+      label: Bomba 5 arranque
+  digital_commands:
+    label: SCA - comando DI [3]
+    kind: coil
+    start_ref: 6145
+    count: 48
+    writable: true
+    signals:
+    - row: 0
+      tag: cB1Aut
+      label: Comando bomba 1 automático
+      default: false
+    - row: 1
+      tag: cB1Mr
+      label: Comando bomba 1 marcha
+      default: false
+    - row: 4
+      tag: cB2Aut
+      label: Comando bomba 2 automático
+      default: false
+    - row: 5
+      tag: cB2Mr
+      label: Comando bomba 2 marcha
+      default: false
+    - row: 8
+      tag: cB3Aut
+      label: Comando bomba 3 automático
+      default: false
+    - row: 9
+      tag: cB3Mr
+      label: Comando bomba 3 marcha
+      default: false
+    - row: 12
+      tag: cB4Aut
+      label: Comando bomba 4 automático
+      default: false
+    - row: 13
+      tag: cB4Mr
+      label: Comando bomba 4 marcha
+      default: false
+    - row: 16
+      tag: cB5Aut
+      label: Comando bomba 5 automático
+      default: false
+    - row: 17
+      tag: cB5Mr
+      label: Comando bomba 5 marcha
+      default: false
+    - row: 23
+      tag: yRFF
+      label: Inyección lectura digital - Referencia/Fallo general
+      facade: true
+      writable: true
+      default: false
+      injects_tag: bRFF
+      injection_group: digital_reads
+    - row: 24
+      tag: yResNvAtP
+      label: Inyección lectura digital - Reserva nivel alto pera
+      facade: true
+      writable: true
+      default: false
+      injects_tag: bResNvAtP
+      injection_group: digital_reads
+    - row: 25
+      tag: yResNvBjP
+      label: Inyección lectura digital - Reserva nivel bajo pera
+      facade: true
+      writable: true
+      default: false
+      injects_tag: bResNvBjP
+      injection_group: digital_reads
+    - row: 26
+      tag: yCAspNvAtP
+      label: Inyección lectura digital - Cámara aspiración nivel alto pera
+      facade: true
+      writable: true
+      default: false
+      injects_tag: bCAspNvAtP
+      injection_group: digital_reads
+    - row: 27
+      tag: yCAspNvBjP
+      label: Inyección lectura digital - Cámara aspiración nivel bajo pera
+      facade: true
+      writable: true
+      default: false
+      injects_tag: bCAspNvBjP
+      injection_group: digital_reads
+    - row: 28
+      tag: yB1RTU
+      label: Inyección lectura digital - Bomba 1 RTU
+      facade: true
+      writable: true
+      default: false
+      injects_tag: bB1RTU
+      injection_group: digital_reads
+    - row: 29
+      tag: yB1EMar
+      label: Inyección lectura digital - Bomba 1 en marcha
+      facade: true
+      writable: true
+      default: false
+      injects_tag: bB1EMar
+      injection_group: digital_reads
+    - row: 30
+      tag: yB1Bypass
+      label: Inyección lectura digital - Bomba 1 bypass
+      facade: true
+      writable: true
+      default: false
+      injects_tag: bB1Bypass
+      injection_group: digital_reads
+    - row: 31
+      tag: yB1Falla
+      label: Inyección lectura digital - Bomba 1 falla
+      facade: true
+      writable: true
+      default: false
+      injects_tag: bB1Falla
+      injection_group: digital_reads
+    - row: 32
+      tag: yB2RTU
+      label: Inyección lectura digital - Bomba 2 RTU
+      facade: true
+      writable: true
+      default: false
+      injects_tag: bB2RTU
+      injection_group: digital_reads
+    - row: 33
+      tag: yB2EMar
+      label: Inyección lectura digital - Bomba 2 en marcha
+      facade: true
+      writable: true
+      default: false
+      injects_tag: bB2EMar
+      injection_group: digital_reads
+    - row: 34
+      tag: yB2Bypass
+      label: Inyección lectura digital - Bomba 2 bypass
+      facade: true
+      writable: true
+      default: false
+      injects_tag: bB2Bypass
+      injection_group: digital_reads
+    - row: 35
+      tag: yB2Falla
+      label: Inyección lectura digital - Bomba 2 falla
+      facade: true
+      writable: true
+      default: false
+      injects_tag: bB2Falla
+      injection_group: digital_reads
+    - row: 36
+      tag: yB3RTU
+      label: Inyección lectura digital - Bomba 3 RTU
+      facade: true
+      writable: true
+      default: false
+      injects_tag: bB3RTU
+      injection_group: digital_reads
+    - row: 37
+      tag: yB3EMar
+      label: Inyección lectura digital - Bomba 3 en marcha
+      facade: true
+      writable: true
+      default: false
+      injects_tag: bB3EMar
+      injection_group: digital_reads
+    - row: 38
+      tag: yB3Bypass
+      label: Inyección lectura digital - Bomba 3 bypass
+      facade: true
+      writable: true
+      default: false
+      injects_tag: bB3Bypass
+      injection_group: digital_reads
+    - row: 39
+      tag: yB3Falla
+      label: Inyección lectura digital - Bomba 3 falla
+      facade: true
+      writable: true
+      default: false
+      injects_tag: bB3Falla
+      injection_group: digital_reads
+    - row: 40
+      tag: yB4RTU
+      label: Inyección lectura digital - Bomba 4 RTU
+      facade: true
+      writable: true
+      default: false
+      injects_tag: bB4RTU
+      injection_group: digital_reads
+    - row: 41
+      tag: yB4EMar
+      label: Inyección lectura digital - Bomba 4 en marcha
+      facade: true
+      writable: true
+      default: false
+      injects_tag: bB4EMar
+      injection_group: digital_reads
+    - row: 42
+      tag: yB4Bypass
+      label: Inyección lectura digital - Bomba 4 bypass
+      facade: true
+      writable: true
+      default: false
+      injects_tag: bB4Bypass
+      injection_group: digital_reads
+    - row: 43
+      tag: yB4Falla
+      label: Inyección lectura digital - Bomba 4 falla
+      facade: true
+      writable: true
+      default: false
+      injects_tag: bB4Falla
+      injection_group: digital_reads
+    - row: 44
+      tag: yB5RTU
+      label: Inyección lectura digital - Bomba 5 RTU
+      facade: true
+      writable: true
+      default: false
+      injects_tag: bB5RTU
+      injection_group: digital_reads
+    - row: 45
+      tag: yB5EMar
+      label: Inyección lectura digital - Bomba 5 en marcha
+      facade: true
+      writable: true
+      default: false
+      injects_tag: bB5EMar
+      injection_group: digital_reads
+    - row: 46
+      tag: yB5Bypass
+      label: Inyección lectura digital - Bomba 5 bypass
+      facade: true
+      writable: true
+      default: false
+      injects_tag: bB5Bypass
+      injection_group: digital_reads
+    - row: 47
+      tag: yB5Falla
+      label: Inyección lectura digital - Bomba 5 falla
+      facade: true
+      writable: true
+      default: false
+      injects_tag: bB5Falla
+      injection_group: digital_reads
