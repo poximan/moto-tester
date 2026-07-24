@@ -1,57 +1,116 @@
 1. Criterios generales de arquitectura y diseno
 - Separar responsabilidades por modulos o bounded contexts, para no mezclar canal, negocio, operacion, persistencia, integraciones externas y servicios auxiliares.
-- Definir fronteras claras entre modulos, de modo que cada uno tenga una y solo responsabilidad dominante y una interfaz de comunicacion explicita.
-- Centralizar la logica de negocio y las reglas de estado en un unico nucleo o fuente de verdad, evitando que la UI, adaptadores o integraciones externas dupliquen criterio.
-- Mantener una ruta unica y controlada para operaciones criticas, con el fin de mejorar trazabilidad, control de formato y consistencia operativa.
-- Desacoplar el dominio interno de las APIs externas mediante modulos adaptadores o gateways.
-- Aislar capacidades complementarias o especializadas fuera del nucleo principal, para que el core permanezca enfocado en su responsabilidad de orquestador o de visión global.
-- Definir explicitamente los modos de trabajo, perfiles o actores del sistema, asi como sus permisos, alcance funcional y canal de acceso.
+- Definir fronteras claras entre modulos, de modo que cada uno tenga una sola responsabilidad dominante y una interfaz de comunicacion explicita.
+- Centralizar la logica de negocio y las reglas de estado en un unico nucleo o fuente de verdad, evitando que interfaces, adaptadores o integraciones externas dupliquen criterio.
+- Mantener una ruta unica y controlada para operaciones criticas, con el fin de mejorar trazabilidad, formato y consistencia operativa.
+- Desacoplar el dominio interno de las APIs externas mediante adaptadores o gateways.
+- Aislar capacidades complementarias fuera del nucleo principal, para que el core permanezca enfocado en su responsabilidad.
+- Definir explicitamente los modos de trabajo, perfiles y actores del sistema, asi como sus permisos, alcance funcional y canal de acceso.
 
 2. Criterios de integracion y comunicacion entre componentes
 - Restringir la intercomunicacion entre proyectos o modulos a mecanismos explicitamente autorizados.
 - No introducir canales alternativos no previstos para la comunicacion entre componentes.
 - Preservar contratos de integracion claros entre productores y consumidores.
 - Hacer que cada consumidor use solo las interfaces que le corresponden, sin bypass ni accesos directos a capas que no le pertenecen.
-- Tratar a ciertos modulos como adaptadores de canal, responsables de traducir entre el dominio interno y protocolos o APIs externas.
+- Tratar los adaptadores de canal como traductores entre el dominio interno y protocolos o APIs externas; no deben contener reglas de negocio ni asumir la responsabilidad de un router.
+- Tratar el gateway de frontera como infraestructura de transporte y ruteo declarativo; no debe actuar como repositorio de artefactos ni como fuente de verdad del dominio.
+- Tratar el repositorio de artefactos como una capacidad independiente, con rutas estables, metadata verificable y almacenamiento montado en modo de solo lectura durante la publicacion.
 
 3. Criterios de robustez y manejo de errores
-- Trabajar sin estrategias de fallback.
+- Trabajar sin estrategias de fallback implicitas.
 - No ocultar fallas con valores por defecto, comportamientos alternativos ni retrocompatibilidades improvisadas.
-- Usar contratos duros: si un dato es obligatorio, se asume presente; si no esta, el sistema debe fallar de manera visible.
+- Usar contratos duros: si un dato es obligatorio y no esta presente, el sistema debe fallar de manera visible.
 - Ante datos indispensables ausentes o imposibilidad de continuar, reportar el problema explicitamente y abortar la ejecucion.
 - Hacer visibles las fallas por log o salida en pantalla, evitando degradaciones silenciosas.
 - Favorecer consistencia y explicitud por encima de tolerancia blanda a errores.
-- Aceptar cambios destructivos cuando el criterio del proyecto asi lo define, por ejemplo en modelos de datos sin retrocompatibilidad.
+- Aceptar cambios destructivos solo cuando el criterio del proyecto los defina y su alcance haya sido verificado.
 
 4. Criterios de persistencia y consistencia
 - Considerar una unica fuente de verdad para estados y reglas.
 - Persistir estados y mensajes de manera controlada y consistente.
 - Separar el registro transaccional del disparo de eventos cuando se requiera robustez frente a caidas o reintentos.
-- Evitar que clientes, frontends o modulos perifericos alteren de hecho la verdad del sistema por fuera del nucleo definido.
+- Evitar que clientes, frontends o modulos perifericos alteren la verdad del sistema por fuera del nucleo definido.
 
 5. Criterios de pruebas
 - Probar el sistema de forma black-box siempre que sea posible.
 - Recorrer los flujos reales del sistema a traves de sus puntos de entrada normales, no mediante accesos internos o escritura directa en base de datos.
 - Validar comportamiento, carga y trazabilidad sin romper el desacople entre modulos.
-- Hacer que los tests respeten la arquitectura y no la salteen.
+- Hacer que las pruebas respeten la arquitectura y no la salteen.
 
 6. Criterios de implementacion y edicion de codigo
-- Nunca hacer build ni run; solo editar codigo.
+- Nunca hacer build ni run; solo editar codigo y realizar validaciones estaticas que no ejecuten la aplicacion.
 - Mantener codificacion UTF-8 en archivos.
-- Escribir comentarios en castellano, sin tildes y sin letra enie.
-- En Android, siempre centralizar textos en recursos en lugar de hardcodearlos en destino.
+- Escribir comentarios dentro del codigo fuente en castellano, sin tildes y sin letra enie.
+- Esta restriccion aplica exclusivamente a comentarios embebidos en archivos de codigo fuente.
+- No aplica a respuestas del asistente, documentacion externa al codigo ni textos funcionales visibles para usuarios, salvo que el proyecto lo indique explicitamente.
+- En Android, centralizar siempre los textos en recursos en lugar de hardcodearlos en destino.
+- Antes de editar, preservar cambios locales existentes y rastrear referencias de rutas, imports, Docker Compose, scripts y documentacion.
 
-7. Patrones metodologicos
-- Enfoque de arquitectura modular.
-- Enfoque event-driven para propagacion de cambios y coordinacion entre componentes.
-- Enfoque de separacion estricta de incumbencias.
-- Enfoque fail-fast ante configuracion incompleta o inconsistente.
-- Enfoque contract-first o de contratos duros.
-- Enfoque de fuente de verdad centralizada.
-- Enfoque de integracion por interfaces y no por acoplamiento directo.
-- Enfoque de pruebas por comportamiento observable.
-- Enfoque de no ocultamiento del error.
-- Enfoque de consistencia operativa por encima de compatibilidad blanda.
-- Enfoque de disciplina de edicion sobre el codigo existente, respetando encoding, comentarios y formato de archivo.
+7. Convenciones de nombres y estructura de carpetas
+- Usar nombres descriptivos en minusculas y kebab-case para proyectos, servicios y carpetas de infraestructura.
+- Usar el mismo nombre para componentes que cumplen la misma funcion y nombres distintos cuando las responsabilidades difieren.
+- Reservar edge-gateway para el unico punto de ruteo de frontera, artifact-repository para el repositorio central, channel-adapter para adaptadores de canal y tunnel-client para el transporte de tunel.
+- Evitar nombres coloquiales, sufijos genericos redundantes y abreviaturas que no formen parte del lenguaje ubicuo del dominio.
+- No renombrar carpetas impuestas por frameworks o lenguajes, como src, app, res, main o test.
+- No mezclar codigo fuente con builds, caches, dependencias descargadas, logs, secretos ni artefactos generados.
+- Mantener .gitignore y .dockerignore ajustados al proyecto. Conservar .gitattributes cuando imponga finales de linea o tratamiento binario necesario; no eliminar archivos tecnicos sin verificar primero su funcion.
 
-por ultimo, siempre que me contestes algo, hacelo en castellano.
+8. Criterios obligatorios para Docker y portabilidad Windows-Linux
+- Disenar la imagen final para Linux aunque el desarrollo se realice en Windows: respetar mayusculas y minusculas, rutas POSIX, permisos, propietarios y finales de linea LF.
+- Ejecutar procesos de aplicacion con un usuario sin privilegios y con UID/GID numericos estables. Usar 1000:1000 por defecto, salvo que la plataforma de despliegue exija otros valores.
+- Si una imagen oficial, como PostgreSQL, necesita iniciar con privilegios para preparar volumenes y luego reduce privilegios mediante su entrypoint, no sobrescribir ese flujo sin necesidad; verificarlo y documentar la excepcion.
+- En imagenes Debian o Ubuntu, usar como referencia:
+
+  RUN groupadd --gid 1000 appgroup && \
+      useradd --uid 1000 --gid 1000 --create-home --shell /bin/sh appuser
+
+  WORKDIR /app
+  RUN install -d -o 1000 -g 1000 /app /shared
+  COPY --chown=1000:1000 . /app
+  ENV PYTHONPATH=/app:/shared
+  USER 1000:1000
+
+- En Alpine, usar addgroup y adduser equivalentes; no copiar comandos de otra distribucion sin validar la imagen base.
+- Preferir COPY --chown y crear directorios con propietario correcto. Usar RUN chown -R 1000:1000 /app solo cuando la estructura de capas no permita asignar el propietario durante COPY.
+- Definir PYTHONPATH=/app:/shared solo en servicios Python que realmente usen esas rutas; no agregar variables sin necesidad funcional.
+- Crear y autorizar de forma explicita todos los directorios que deban escribirse en runtime. Los bind mounts y volumenes deben ser compatibles con el UID/GID del contenedor.
+- Convertir scripts de shell a LF, asignarles permiso de ejecucion dentro de la imagen y usar shebang POSIX valido.
+- Usar puertos no privilegiados en procesos sin privilegios. Si la publicacion requiere 80 o 443, mapearlos desde el host hacia un puerto interno mayor o usar capacidades minimas justificadas.
+- Usar builds multi-stage cuando haya compilacion, copiar a la imagen final solo el runtime necesario y mantener un contexto pequeno mediante .dockerignore.
+- Fijar versiones de imagenes base y dependencias criticas; evitar latest en produccion.
+- Declarar healthchecks, senales y politicas de reinicio coherentes. El proceso principal debe ejecutarse en primer plano y recibir SIGTERM.
+- No incorporar secretos en Dockerfile, imagenes ni repositorio. Inyectarlos en runtime y fallar rapido si falta una variable obligatoria.
+- Validar estaticamente Dockerfile, Compose, entrypoints, rutas, permisos y finales de linea antes de desplegar.
+- Hacer coincidir el nombre del servicio Compose con la carpeta que contiene su Dockerfile. Derivar una identidad fisica unica con el formato <proyecto>-<servicio>; el repositorio de la imagen y container_name deben usar exactamente esa identidad, sin prefijos artificiales img- ni cont-.
+- Usar el namespace del proyecto porque los nombres de contenedor son globales en el daemon Docker y carpetas funcionales como channel-adapter pueden repetirse legitimamente entre productos.
+- Mantener en cada Dockerfile los defaults estaticos propios del contenedor, el puerto interno, EXPOSE, usuario, comando o entrypoint y healthcheck. La imagen debe poder declarar por si misma como ejecuta y verifica su proceso.
+- Limitar Compose a construccion y seleccion de imagen, publicacion de puertos, secretos y configuracion de despliegue, dependencias, redes, volumenes, recursos, reinicio y logging.
+- No duplicar en Compose un default ya definido en el Dockerfile. Usar command o healthcheck en Compose solamente para imagenes oficiales de terceros, tareas one-shot o overrides de despliegue explicitamente justificados.
+- No crear Dockerfiles vacios para renombrar imagenes oficiales de terceros. En esos casos conservar la imagen versionada del proveedor y usar un container_name con namespace del proyecto como excepcion documentada.
+- Ejecutar utilities/scripts/validate-docker-conventions.py despues de modificar Dockerfile, Compose, nombres de servicios o identidades de imagen.
+
+9. Gobierno de puertos TCP
+- Mantener ports.txt en la raiz del workspace como fuente de verdad de puertos publicados, internos, remotos y externos.
+- Mantener platform/edge-platform/edge-gateway/config/routes.txt como fuente de verdad exclusiva del ruteo HTTP. No fusionarlo con ports.txt: uno decide host, path y destino; el otro registra contratos TCP.
+- Validar que cada destino de routes.txt corresponda a un servicio o alias Docker existente y a un service_port registrado, mediante utilities/scripts/validate-docker-conventions.py.
+- Distinguir siempre host_port de service_port. Los puertos publicados en el host deben ser unicos en todo el workspace; los puertos internos pueden repetirse cuando pertenecen a redes aisladas.
+- Asignar un unico service_port canonico a componentes funcionalmente equivalentes, aunque pertenezcan a productos distintos. El puerto interno forma parte del contrato de la imagen y no debe variar mediante Compose.
+- Reservar 80 y 443 para la frontera publica central. Evitar publicar directamente servicios de dominio; acceder a ellos mediante el router de frontera o redes internas.
+- Asignar bandas estables por producto: 4000-4999 para se-chatgis, 5000-5999 para floral-resto, 6000-6099 para casa-miento-gb, 6100-6199 para espacio-nagare, 6200-6299 para reportespiolis, 6300-6399 para scadita-mb, 8000-8199 para comunic-mon, 8200-8299 para moto-tester y 8300-8399 para afondo-gim.
+- Vincular herramientas de desarrollo y diagnostico a localhost o 127.0.0.1 siempre que no deban aceptar conexiones remotas.
+- Al cambiar un puerto, actualizar en una misma modificacion ports.txt, Compose, variables de entorno, codigo, healthchecks y documentacion. Validar la configuracion renderizada de Compose y ejecutar utilities/scripts/validate-ports.py.
+- Antes de desplegar, comprobar que los puertos publicados esten libres en el sistema operativo. Una ocupacion debe producir un error visible; no seleccionar otro puerto de forma silenciosa.
+
+10. Patrones metodologicos
+- Arquitectura modular y separacion estricta de incumbencias.
+- Event-driven para propagacion de cambios y coordinacion cuando corresponda.
+- Fail-fast ante configuracion incompleta o inconsistente.
+- Contract-first y contratos duros.
+- Fuente de verdad centralizada.
+- Integracion por interfaces y no por acoplamiento directo.
+- Pruebas por comportamiento observable.
+- No ocultamiento del error.
+- Consistencia operativa por encima de compatibilidad blanda.
+- Disciplina de edicion sobre el codigo existente, respetando encoding, comentarios y formato de archivo.
+
+Por ultimo, responder siempre en castellano.

@@ -12,11 +12,11 @@ La solución contiene tres componentes dockerizados:
 
 Hay una separación estricta:
 
-- `.env`: **única fuente de verdad para parámetros runtime fijos**: PLC, puerto web interno, puerto publicado en el host, polling, timeouts, modo simulación y parámetros del servicio experto.
+- `.env`: **única fuente de verdad para configuración de despliegue**: PLC, puerto publicado en el host, polling, timeouts, modo simulación y parámetros del servicio experto.
 - `runtime/write_mode.txt`: **única fuente de verdad del modo de escritura**, persistente y editable como texto. Se crea automáticamente en `read_only` si no existe. Valores válidos: `read_only` o `write_enabled`.
 - `config/default.yaml`: **solo mapa Modbus y estructura de señales**: tablas, tags, filas, tipos y marcas de inyección.
 
-El `docker-compose.yml` no redefine parámetros de aplicación: carga `.env` con `env_file`, usa `WEB_PORT` como puerto interno, usa `WEB_HOST_PORT` como puerto publicado en el host y monta `./runtime` tanto en el contenedor web como en el emulador para persistir modo y estado. La carpeta `runtime/` es local y generada; no forma parte de la imagen ni del repositorio. El código rechaza `server`, `controller`, `polling`, `safety` o `runtime` dentro de `config/default.yaml`.
+El `docker-compose.yml` se limita a la orquestación: carga `.env`, publica `WEB_HOST_PORT`, conecta redes y monta `./runtime`. Los puertos internos `8080` y `8090`, los hosts de escucha, los comandos y el healthcheck pertenecen a sus Dockerfiles. La carpeta `runtime/` es local y generada; no forma parte de la imagen ni del repositorio. El código rechaza `server`, `controller`, `polling`, `safety` o `runtime` dentro de `config/default.yaml`.
 
 ## Etapa 1: observación
 
@@ -56,7 +56,7 @@ docker compose up --build
 Abrir la URL formada con `WEB_HOST_PORT` definido en `.env`, por defecto:
 
 ```text
-http://localhost:8087
+http://localhost:8200
 ```
 
 No hay scripts `run.sh` ni `run.bat`; la entrada operativa estándar es Docker Compose. En la raíz solo queda `docker-compose.yml` como archivo Docker; los Dockerfile están dentro de la carpeta del servicio que construyen: `trasvase-tester/Dockerfile` y `field-emulator/Dockerfile`.
@@ -252,13 +252,13 @@ El servidor web escucha dentro del contenedor en `WEB_HOST=0.0.0.0` y Docker pub
 
 ```yaml
 ports:
-  - "0.0.0.0:${WEB_HOST_PORT}:${WEB_PORT}"
+  - "0.0.0.0:${WEB_HOST_PORT}:8080"
 ```
 
 Para entrar desde otra máquina, usar la IP LAN del host donde corre Docker, no `localhost`:
 
 ```text
-http://<IP_LAN_DEL_HOST_DOCKER>:8087
+http://<IP_LAN_DEL_HOST_DOCKER>:8200
 ```
 
 Chequeos rápidos en el host Docker:
@@ -281,13 +281,13 @@ Si localmente responde pero desde otra PC no, el problema normalmente está fuer
 
 ## Orden de arranque y error `Connection refused` del emulador
 
-El `field-emulator` consume la API interna del servicio web en `http://trasvase-tester:${WEB_PORT}`. Si el emulador arranca antes de que Uvicorn esté aceptando conexiones, aparece un error transitorio:
+El `field-emulator` consume la API interna del servicio web en `http://trasvase-tester:8080`. Si el emulador arranca antes de que Uvicorn esté aceptando conexiones, aparece un error transitorio:
 
 ```text
 <urlopen error [Errno 111] Connection refused>
 ```
 
-Esto no indica un problema Modbus; significa que la API web todavía no estaba lista. El `docker-compose.yml` actual define un `healthcheck` sobre `/api/health` y hace que `field-emulator` espere a que `trasvase-tester` esté `healthy` antes de arrancar. Además, el emulador registra ese caso como warning resumido, no como stack trace repetitivo.
+Esto no indica un problema Modbus; significa que la API web todavía no estaba lista. El Dockerfile de `trasvase-tester` define el `healthcheck` sobre `/api/health`; Compose solamente hace que `field-emulator` espere a que el servicio esté `healthy`. Además, el emulador registra ese caso como warning resumido, no como stack trace repetitivo.
 
 Si vuelve a aparecer, revisar:
 

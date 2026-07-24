@@ -65,10 +65,10 @@ La lectura digital oficial de cada bomba ahora incluye `bB#Arr` al final del paq
 Los logs persistentes se escriben en `runtime/logs/` y se pueden consultar desde la web en la sección **Diagnóstico y logs** o por API:
 
 ```bash
-curl http://localhost:8080/api/logs
-curl "http://localhost:8080/api/logs/trasvase-tester?lines=300"
-curl "http://localhost:8080/api/logs/field-emulator?lines=300"
-curl http://localhost:8080/api/diagnostics
+curl http://localhost:8200/api/logs
+curl "http://localhost:8200/api/logs/trasvase-tester?lines=300"
+curl "http://localhost:8200/api/logs/field-emulator?lines=300"
+curl http://localhost:8200/api/diagnostics
 ```
 
 Archivos principales:
