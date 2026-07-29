@@ -91,7 +91,7 @@
 
 9. Gobierno de puertos TCP
 - Mantener ports.txt en la raiz del workspace como fuente de verdad de puertos publicados, internos, remotos y externos.
-- Mantener platform/edge-platform/edge-gateway/config/routes.txt como fuente de verdad exclusiva del ruteo HTTP. No fusionarlo con ports.txt: uno decide host, path y destino; el otro registra contratos TCP.
+- Mantener servicoop/platform/edge-platform/edge-gateway/config/routes.txt como fuente de verdad exclusiva del ruteo HTTP. No fusionarlo con ports.txt: uno decide host, path y destino; el otro registra contratos TCP.
 - Validar que cada destino de routes.txt corresponda a un servicio o alias Docker existente y a un service_port registrado, mediante utilities/scripts/validate-docker-conventions.py.
 - Distinguir siempre host_port de service_port. Los puertos publicados en el host deben ser unicos en todo el workspace; los puertos internos pueden repetirse cuando pertenecen a redes aisladas.
 - Asignar un unico service_port canonico a componentes funcionalmente equivalentes, aunque pertenezcan a productos distintos. El puerto interno forma parte del contrato de la imagen y no debe variar mediante Compose.
@@ -110,7 +110,14 @@
 - Configurar sesiones y servidores de base de datos en UTC y usar tipos con zona para instantes persistidos. Las entradas de fecha y hora visibles deben convertirse de UTC-3 a UTC antes de salir de presentacion.
 - Inyectar fuentes de reloj en pruebas para cubrir cambios de dia entre UTC y UTC-3 sin depender de la hora real del equipo.
 
-11. Patrones metodologicos
+11. Gobierno de configuracion local y secretos
+- Mantener un par .env y .env.example en cada sistema que consuma configuracion de entorno local o desde Compose. En aplicaciones Android, aplicar el mismo contrato a local.properties y local.properties.example.
+- Exigir que ambos miembros de cada par declaren exactamente las mismas claves. Los valores estables no sensibles pueden conservar el mismo default; los secretos y valores dependientes del entorno deben reemplazarse por placeholders inequívocos en la plantilla.
+- Mantener .env y local.properties fuera de Git mediante .gitignore. Mantener sus archivos .example sin ignorar y dentro del repositorio correspondiente.
+- No inventar fallbacks para compensar claves ausentes. La configuracion obligatoria debe fallar de forma visible y la plantilla debe documentar todo lo necesario para completar una instalacion.
+- Ejecutar utilities/scripts/validate-local-config.py despues de agregar, eliminar o renombrar variables, modificar Compose, cambiar configuracion movil o editar reglas de Git.
+
+12. Patrones metodologicos
 - Arquitectura modular y separacion estricta de incumbencias.
 - Event-driven para propagacion de cambios y coordinacion cuando corresponda.
 - Fail-fast ante configuracion incompleta o inconsistente.
