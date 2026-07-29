@@ -101,7 +101,16 @@
 - Al cambiar un puerto, actualizar en una misma modificacion ports.txt, Compose, variables de entorno, codigo, healthchecks y documentacion. Validar la configuracion renderizada de Compose y ejecutar utilities/scripts/validate-ports.py.
 - Antes de desplegar, comprobar que los puertos publicados esten libres en el sistema operativo. Una ocupacion debe producir un error visible; no seleccionar otro puerto de forma silenciosa.
 
-10. Patrones metodologicos
+10. Gobierno de fecha y hora
+- Definir un proveedor temporal autocontenido por sistema que centralice la lectura, serializacion, parseo y conversion de estampas de tiempo.
+- Usar UTC+0 para dominio, persistencia, cache, mensajeria, API y toda capa intermedia. Serializar instantes con zona explicita mediante ISO-8601.
+- Usar UTC-3 fijo solamente para presentacion y marcas temporales visibles de logs. No depender de la zona horaria de Windows, Linux, Android, navegador o contenedor.
+- No generar ni convertir estampas de tiempo fuera del proveedor. Las fechas civiles sin hora conservan su semantica de calendario y no deben recibir conversiones implicitas de zona.
+- Usar reloj monotonicamente creciente para timeouts, reintentos, TTL y antirrebote dentro de un proceso; no usar el reloj de pared para medir duraciones.
+- Configurar sesiones y servidores de base de datos en UTC y usar tipos con zona para instantes persistidos. Las entradas de fecha y hora visibles deben convertirse de UTC-3 a UTC antes de salir de presentacion.
+- Inyectar fuentes de reloj en pruebas para cubrir cambios de dia entre UTC y UTC-3 sin depender de la hora real del equipo.
+
+11. Patrones metodologicos
 - Arquitectura modular y separacion estricta de incumbencias.
 - Event-driven para propagacion de cambios y coordinacion cuando corresponda.
 - Fail-fast ante configuracion incompleta o inconsistente.
