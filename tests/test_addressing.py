@@ -14,11 +14,11 @@ def test_modicon_reference_conversion():
     assert reference_to_pdu(42076, "holding_register") == 2075
     assert reference_to_pdu(42083, "holding_register") == 2082
     assert reference_to_pdu(14097, "discrete_input") == 4096
-    assert reference_to_pdu(14177, "discrete_input") == 4176
+    assert reference_to_pdu(14173, "discrete_input") == 4172
     assert reference_to_pdu(6145, "coil") == 6144
     assert reference_to_pdu(6162, "coil") == 6161
     assert reference_to_pdu(6168, "coil") == 6167
-    assert reference_to_pdu(6192, "coil") == 6191
+    assert reference_to_pdu(6187, "coil") == 6186
 
 
 def test_pdu_zero_based_mode():
@@ -36,10 +36,10 @@ def test_ace3600_formula_for_intercambio_sca_column_zero():
     assert ace_pdu_address("holding_register", table_number=1, row=34) == 2082
 
     assert ace_reference("discrete_input", table_number=2, row=0) == 14097
-    assert ace_reference("discrete_input", table_number=2, row=80) == 14177
-    assert ace_pdu_address("discrete_input", table_number=2, row=80) == 4176
+    assert ace_reference("discrete_input", table_number=2, row=76) == 14173
+    assert ace_pdu_address("discrete_input", table_number=2, row=76) == 4172
 
     assert ace_reference("coil", table_number=3, row=0) == 6145
     assert ace_reference("coil", table_number=3, row=23) == 6168
-    assert ace_reference("coil", table_number=3, row=47) == 6192
-    assert ace_pdu_address("coil", table_number=3, row=47) == 6191
+    assert ace_reference("coil", table_number=3, row=42) == 6187
+    assert ace_pdu_address("coil", table_number=3, row=42) == 6186

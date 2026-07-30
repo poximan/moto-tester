@@ -357,9 +357,9 @@ class SimulationPoller:
                         f"bB{pump}Aut": pump != 5,
                         f"bB{pump}Ok": not fault,
                         f"bB{pump}EMar": running,
-                        f"bB{pump}Bypass": running and pump % 2 == 0,
                         f"bB{pump}InE": False,
                         f"bB{pump}Falla": fault,
+                        f"bB{pump}Arndo": running,
                     }
                 )
             for tag, signal in self.config.signals_by_tag.items():

@@ -83,6 +83,7 @@ class Signal:
     row: int
     tag: str
     label: str
+    mapped_value: str | None
     reference: int
     pdu_address: int
     data_type: str | None = None
@@ -292,6 +293,7 @@ def load_config(path: str | Path | None = None) -> AppConfig:
                 row=row,
                 tag=tag,
                 label=str(signal_raw.get("label", tag)),
+                mapped_value=signal_raw.get("mapped_value"),
                 reference=reference,
                 pdu_address=pdu_address,
                 data_type=signal_raw.get("data_type", data_type),

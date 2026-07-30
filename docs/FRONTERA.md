@@ -8,7 +8,7 @@ El tester lee y presenta las cuatro tablas SCA del intercambio de producción:
 |---:|---|---|---:|---|
 | 0 | `SCA - lectura AN [0]` | input register | `30001..30026` | lecturas analógicas reales |
 | 1 | `SCA - consigna AN [1]` | holding register | `42049..42070` | consignas reales |
-| 2 | `SCA - lectura DI [2]` | input status | `14097..14177` | lecturas digitales reales |
+| 2 | `SCA - lectura DI [2]` | input status | `14097..14173` | lecturas digitales reales |
 | 3 | `SCA - comando DI [3]` | coil | `6145..6162` | comandos reales |
 
 En la UI, las cuatro tablas SCA muestran solo tags de producción. Se respetan las filas internas vacías del intercambio real, pero no se muestra la zona `y*` dentro de esas cuatro tablas.
@@ -31,7 +31,7 @@ Las áreas `y*` son solo memoria de escritura hacia el controlador; no se leen p
 Ubicación vigente de inyección:
 
 - Consignas analógicas: último valor real fila `21`; filas `22..26` libres; `yNvCamAsp` inicia en fila `27`, ref `42076`; `yB5Hs` termina en fila `34`, ref `42083`.
-- Comandos digitales: último valor real fila `17`; filas `18..22` libres; `yRFF` inicia en fila `23`, ref `6168`; `yB5Falla` termina en fila `47`, ref `6192`.
+- Comandos digitales: último valor real fila `17`; filas `18..22` libres; `yRFF` inicia en fila `23`, ref `6168`; `yB5Falla` termina en fila `42`, ref `6187`.
 
 ## Escritura
 
@@ -55,9 +55,9 @@ Permite escribir tags marcados como `writable: true`: comandos reales `cB#*` e i
 El contenedor `field-emulator` escribe inicialmente `yNvCamAsp` y `yNvRes` usando `POST /api/injection` contra el servicio web. La válvula de ingreso gobierna `yNvCamAsp`; cuanto más abierta, más rápido incrementa el nivel simulado de cámara. La válvula de salida gobierna `yNvRes`; cuanto más abierta, más rápido decrementa el nivel simulado de reserva. Las bombas aportan transferencia cámara → reserva. La salida por defecto está calibrada para que 3 bombas en marcha con válvula de reserva al 50% produzcan balance neutro en la reserva; desde ese punto, la evolución es proporcional a cantidad de bombas y apertura de válvula. Los límites se toman del snapshot: `gCamFn..gCamRb` para cámara y `gResFn..gResSp` para reserva. El dibujo web usa como feedback visible `eNvCamAsp` y `eNvRes`.
 
 
-## `bB#Arr` y generación opcional de `yB#EMar`
+## `bB#Arndo` y generación opcional de `yB#EMar`
 
-La lectura digital oficial de cada bomba ahora incluye `bB#Arr` al final del paquete. El check web `generar EMar` no reemplaza el feedback: solo automatiza la escritura de `yB#EMar` hacia el controlador siguiendo `bB#Arr`. El estado visible de proceso sigue saliendo de `bB#EMar` y del resto de lecturas genuinas.
+La lectura digital oficial de cada bomba conserva `bB#InE` e incluye `bB#Arndo` al final del paquete. El check web `generar EMar` no reemplaza el feedback: solo automatiza la escritura de `yB#EMar` hacia el controlador siguiendo `bB#Arndo`. El estado visible de proceso sigue saliendo de `bB#EMar` y del resto de lecturas genuinas.
 
 
 ## Logs

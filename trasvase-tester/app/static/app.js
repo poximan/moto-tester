@@ -303,8 +303,7 @@ function buildPumps() {
             ${statusItemHtml(`pump-${pump}-running`, "EMar")}
           </div>
           <div class="status-row status-row-faults">
-            ${statusItemHtml(`pump-${pump}-bypass`, "Bypass")}
-            ${statusItemHtml(`pump-${pump}-interlock`, "IncE")}
+            ${statusItemHtml(`pump-${pump}-interlock`, "InE")}
             ${statusItemHtml(`pump-${pump}-fault`, "Falla")}
           </div>
         </div>
@@ -393,7 +392,6 @@ function updatePumps(snap) {
     setDot(`pump-${p.id}-aut-state`, p.aut);
     setHealthDot(`pump-${p.id}-ok`, p.ok);
     setDot(`pump-${p.id}-running`, p.running);
-    setFaultDot(`pump-${p.id}-bypass`, p.bypass);
     setFaultDot(`pump-${p.id}-interlock`, p.interlock);
     setFaultDot(`pump-${p.id}-fault`, p.fault);
     const emar = $(`pump-${p.id}-generate-emar`);
@@ -455,7 +453,7 @@ function buildProductionTables() {
       rows.push(`
         <tr class="${sig ? "" : "empty-row"}">
           <td class="addr">${row}</td>
-          <td title="${sig?.label || ""}">${sig?.tag || ""}</td>
+          <td title="${sig ? `${sig.label || ""}${sig.mapped_value ? ` · variable interna ${sig.mapped_value}` : ""}` : ""}">${sig?.tag || ""}</td>
           <td id="prod-value-${sig?.tag || `${tableName}-${row}`}" class="value-cell quality-unknown" title=""></td>
         </tr>`);
     }

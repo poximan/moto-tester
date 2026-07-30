@@ -14,7 +14,7 @@ Hay una separación estricta:
 
 - `.env`: **única fuente de verdad para configuración de despliegue**: PLC, puerto publicado en el host, polling, timeouts, modo simulación y parámetros del servicio experto.
 - `runtime/write_mode.txt`: **única fuente de verdad del modo de escritura**, persistente y editable como texto. Se crea automáticamente en `read_only` si no existe. Valores válidos: `read_only` o `write_enabled`.
-- `config/default.yaml`: **solo mapa Modbus y estructura de señales**: tablas, tags, filas, tipos y marcas de inyección.
+- `config/default.yaml`: **solo mapa Modbus y estructura de señales**: tablas, tags, filas, tipos, marcas de inyección y, cuando SCA la informa, variable interna `mapped_value`.
 
 El `docker-compose.yml` se limita a la orquestación: carga `.env`, publica `WEB_HOST_PORT`, conecta redes y monta `./runtime`. Los puertos internos `8080` y `8090`, los hosts de escucha, los comandos y el healthcheck pertenecen a sus Dockerfiles. La carpeta `runtime/` es local y generada; no forma parte de la imagen ni del repositorio. El código rechaza `server`, `controller`, `polling`, `safety` o `runtime` dentro de `config/default.yaml`.
 
@@ -24,7 +24,7 @@ Modo equivalente a conectar un SCADA de lectura:
 
 - Lee entradas analógicas reales `30001..30026` con FC04.
 - Lee consignas analógicas reales `42049..42070` con FC03. La zona `y*` no se lee; solo se escribe para inyección y empieza en fila 27.
-- Lee entradas digitales reales `14097..14177` con FC02. Incluye el nuevo bit `bB#Arr` en cada paquete de bomba.
+- Lee entradas digitales reales `14097..14173` con FC02. Conserva `bB#InE` e incluye `bB#Arndo` al final de cada paquete de bomba.
 - Lee comandos digitales reales `6145..6162` con FC01. La zona `y*` no se lee; solo se escribe para inyección y empieza en fila 23.
 - La web permite generar comandos. Con `runtime/write_mode.txt = read_only` solo los registra localmente; con `write_enabled` se escriben al PLC. Las cuatro tablas SCA visibles muestran exclusivamente tags de producción, con filas internas vacías para respetar la distribución real. La zona `y*` no aparece en estas cuatro tablas; queda en las dos tablas de inyección. La actualización de estado en la web llega por WebSocket (`/ws/stream`) y se aplica incrementalmente sobre celdas ya existentes; no hay polling `fetch` periódico del snapshot ni reconstrucción de tablas durante el ciclo de actualización.
 
@@ -35,14 +35,14 @@ No hay tablas de fachada separadas. La UI separa la inyección en dos tablas: le
 | Tabla | Última fila real | Filas libres | Primera fila inyección | Primera ref inyección | Tags |
 |---|---:|---:|---:|---:|---|
 | `SCA - consigna AN [1]` | `21` | `22..26` | `27` | `42076` | `yNvCamAsp`, `yNvRes`, `yTurb`, `yB#Hs`; pisa `SCA - lectura AN [0]` |
-| `SCA - comando DI [3]` | `17` | `18..22` | `23` | `6168` | `yRFF`, peras de reserva/cámara, y por bomba `RTU`, `EMar`, `Bypass`, `Falla`; pisa `SCA - lectura DI [2]` |
+| `SCA - comando DI [3]` | `17` | `18..22` | `23` | `6168` | `yRFF`, peras de reserva/cámara, y por bomba `RTU`, `EMar`, `Falla`; pisa `SCA - lectura DI [2]` |
 
 Las tablas de lecturas quedan exactamente como el intercambio informado:
 
 | Tabla | Rango | Count |
 |---|---:|---:|
 | Lecturas analógicas | `30001..30026` | `26` |
-| Lecturas digitales | `14097..14177` | `77` |
+| Lecturas digitales | `14097..14173` | `77` |
 
 ## Ejecución con Docker
 
@@ -177,7 +177,7 @@ Direcciones relevantes de inyección:
 - `yNvCamAsp`: fila `27`, ref `42076`, PDU `2075`.
 - `yB5Hs`: fila `34`, ref `42083`, PDU `2082`.
 - `yRFF`: fila `23`, ref `6168`, PDU `6167`.
-- `yB5Falla`: fila `47`, ref `6192`, PDU `6191`.
+- `yB5Falla`: fila `42`, ref `6187`, PDU `6186`.
 
 ## Estructura del proyecto
 
@@ -224,9 +224,9 @@ tests/
 
 ## Generación asistida de EMar
 
-En cada card de bomba existe un check `generar EMar`. Cuando está activo, el front escribe `yB#EMar` siguiendo el bit real `bB#Arr`: si `bB#Arr=1` escribe `yB#EMar=1`; si `bB#Arr=0` escribe `yB#EMar=0`. Si el check está desactivado, no toca `yB#EMar`.
+En cada card de bomba existe un check `generar EMar`. Cuando está activo, el front escribe `yB#EMar` siguiendo el bit real `bB#Arndo`: si `bB#Arndo=1` escribe `yB#EMar=1`; si `bB#Arndo=0` escribe `yB#EMar=0`. Si el check está desactivado, no toca `yB#EMar`.
 
-La animación de bomba destella verde/azul cuando el arranque y la marcha no coinciden: `bB#Arr=1` con `bB#EMar=0`, o `bB#Arr=0` con `bB#EMar=1`. La jerarquía de colores se mantiene: sin conexión gris, falla roja, transición verde/azul, marcha verde, parada azul.
+La animación de bomba destella verde/azul cuando el arranque y la marcha no coinciden: `bB#Arndo=1` con `bB#EMar=0`, o `bB#Arndo=0` con `bB#EMar=1`. La jerarquía de colores se mantiene: sin conexión gris, falla roja, transición verde/azul, marcha verde, parada azul.
 
 
 ## Logs

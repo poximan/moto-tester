@@ -17,6 +17,7 @@ WriteKind = Literal["coil", "holding_register"]
 class SignalValue:
     tag: str
     label: str
+    mapped_value: str | None
     table: str
     kind: str
     row: int
@@ -54,6 +55,7 @@ class RuntimeState:
             tag: SignalValue(
                 tag=tag,
                 label=signal.label,
+                mapped_value=signal.mapped_value,
                 table=signal.table,
                 kind=signal.kind,
                 row=signal.row,
@@ -285,8 +287,7 @@ class RuntimeState:
                     "aut": values.get(f"{prefix}Aut"),
                     "ok": values.get(f"{prefix}Ok"),
                     "running": values.get(f"{prefix}EMar"),
-                    "arr": values.get(f"{prefix}Arr"),
-                    "bypass": values.get(f"{prefix}Bypass"),
+                    "arr": values.get(f"{prefix}Arndo"),
                     "interlock": values.get(f"{prefix}InE"),
                     "fault": values.get(f"{prefix}Falla"),
                     "hours": values.get(f"eB{pump}Hs"),

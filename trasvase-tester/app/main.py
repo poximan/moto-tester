@@ -163,6 +163,7 @@ def api_config() -> dict[str, Any]:
                         "row": s.row,
                         "tag": s.tag,
                         "label": s.label,
+                        "mapped_value": s.mapped_value,
                         "reference": s.reference,
                         "pdu_address": s.pdu_address,
                         "function_code": s.function_code,

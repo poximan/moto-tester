@@ -26,9 +26,81 @@ def test_default_config_map():
     assert cfg.tables["analog_reads"].start_pdu == 0
     assert cfg.signals_by_tag["eNvCamAsp"].reference == 30001
     assert cfg.signals_by_tag["gResFn"].default == -1
-    assert cfg.signals_by_tag["bB5Falla"].pdu_address == 4175
-    assert cfg.signals_by_tag["bB5Arr"].pdu_address == 4176
+    assert cfg.signals_by_tag["bB5Falla"].pdu_address == 4171
+    assert cfg.signals_by_tag["bB5Arndo"].pdu_address == 4172
     assert cfg.signals_by_tag["cB5Mr"].pdu_address == 6161
+
+
+def test_exchange_map_matches_the_four_sca_tables():
+    cfg = load_config("config/default.yaml")
+
+    expected_rows = {
+        "analog_reads": {
+            "eNvCamAsp": 0, "eNvRes": 1, "eTurb": 2,
+            "eB1Hs": 9, "eB2Hs": 13, "eB3Hs": 17, "eB4Hs": 21, "eB5Hs": 25,
+        },
+        "analog_setpoints": {
+            "gResSp": 0, "gResRb": 1, "gResAt": 2,
+            "gResParA": 4, "gResParB": 5, "gResParC": 6, "gResParD": 7,
+            "gResArrA": 9, "gResArrB": 10, "gResArrC": 11, "gResArrD": 12,
+            "gResBj": 14, "gResFn": 15,
+            "gCamRb": 18, "gCamAt": 19, "gCamBj": 20, "gCamFn": 21,
+            "yNvCamAsp": 27, "yNvRes": 28, "yTurb": 29,
+            "yB1Hs": 30, "yB2Hs": 31, "yB3Hs": 32, "yB4Hs": 33, "yB5Hs": 34,
+        },
+        "digital_commands": {
+            "cB1Aut": 0, "cB1Mr": 1, "cB2Aut": 5, "cB2Mr": 6,
+            "cB3Aut": 9, "cB3Mr": 10, "cB4Aut": 12, "cB4Mr": 13,
+            "cB5Aut": 16, "cB5Mr": 17,
+            "yRFF": 23, "yResNvAtP": 24, "yResNvBjP": 25,
+            "yCAspNvAtP": 26, "yCAspNvBjP": 27,
+            "yB1RTU": 28, "yB1EMar": 29, "yB1Falla": 30,
+            "yB2RTU": 31, "yB2EMar": 32, "yB2Falla": 33,
+            "yB3RTU": 34, "yB3EMar": 35, "yB3Falla": 36,
+            "yB4RTU": 37, "yB4EMar": 38, "yB4Falla": 39,
+            "yB5RTU": 40, "yB5EMar": 41, "yB5Falla": 42,
+        },
+    }
+    expected_digital_rows = {
+        "bRFF": 0,
+        "bResRb": 5, "bResAt": 6, "bResBj": 7, "bResNvAtP": 8, "bResNvBjP": 9,
+        "bCAspRb": 14, "bCAspAt": 15, "bCAspBj": 16,
+        "bCAspNvAtP": 17, "bCAspNvBjP": 18,
+    }
+    for pump, start in enumerate((26, 37, 48, 59, 70), start=1):
+        for offset, suffix in enumerate(("RTU", "Aut", "Ok", "EMar", "InE", "Falla", "Arndo")):
+            expected_digital_rows[f"bB{pump}{suffix}"] = start + offset
+    expected_rows["digital_reads"] = expected_digital_rows
+
+    for table_name, tags in expected_rows.items():
+        actual = {signal.tag: signal.row for signal in cfg.tables[table_name].signals}
+        assert actual == tags
+
+    expected_mapped_values = {
+        "eNvCamAsp": "iNvCamAsp", "eNvRes": "iNvRes", "eTurb": "iTurb",
+        **{f"eB{pump}Hs": f"B{pump}Hs" for pump in range(1, 6)},
+        "bRFF": "iRFF",
+        "bResRb": "ResRb", "bResAt": "ResAt", "bResBj": "ResBj",
+        "bResNvAtP": "ResNvAtP", "bResNvBjP": "ResNvBjP",
+        "bCAspRb": "CAspRb", "bCAspAt": "CAspAt", "bCAspBj": "CAspBj",
+        "bCAspNvAtP": "CAspNvAtP", "bCAspNvBjP": "CAspNvBjP",
+    }
+    for pump in range(1, 6):
+        expected_mapped_values.update({
+            f"bB{pump}RTU": f"iB{pump}RTU",
+            f"bB{pump}Aut": f"B{pump}Aut",
+            f"bB{pump}Ok": f"B{pump}Ok",
+            f"bB{pump}EMar": f"iB{pump}EMar",
+            f"bB{pump}InE": f"B{pump}InE",
+            f"bB{pump}Falla": f"iB{pump}Falla",
+            f"bB{pump}Arndo": f"mB{pump}Arr",
+        })
+    actual_mapped_values = {
+        tag: signal.mapped_value
+        for tag, signal in cfg.signals_by_tag.items()
+        if signal.mapped_value is not None
+    }
+    assert actual_mapped_values == expected_mapped_values
 
 
 def test_yaml_has_no_runtime_parameters():
@@ -97,7 +169,7 @@ def test_injection_lives_only_inside_setpoints_and_commands():
     assert cfg.tables["analog_reads"].start_ref == 30001
     assert cfg.tables["analog_reads"].count == 26
     assert cfg.tables["digital_reads"].start_ref == 14097
-    assert cfg.tables["digital_reads"].count == 81
+    assert cfg.tables["digital_reads"].count == 77
 
     assert cfg.tables["analog_setpoints"].start_ref == 42049
     assert cfg.tables["analog_setpoints"].count == 35
@@ -110,15 +182,15 @@ def test_injection_lives_only_inside_setpoints_and_commands():
     assert cfg.signals_by_tag["yB5Hs"].reference == 42083
 
     assert cfg.tables["digital_commands"].start_ref == 6145
-    assert cfg.tables["digital_commands"].count == 48
+    assert cfg.tables["digital_commands"].count == 43
     assert cfg.signals_by_tag["yRFF"].table == "digital_commands"
     assert cfg.signals_by_tag["yRFF"].row == 23
     assert cfg.signals_by_tag["yRFF"].reference == 6168
     assert cfg.signals_by_tag["yRFF"].pdu_address == 6167
     assert cfg.signals_by_tag["yRFF"].facade is True
-    assert cfg.signals_by_tag["yB5Falla"].row == 47
-    assert cfg.signals_by_tag["yB5Falla"].reference == 6192
-    assert cfg.signals_by_tag["yB5Falla"].pdu_address == 6191
+    assert cfg.signals_by_tag["yB5Falla"].row == 42
+    assert cfg.signals_by_tag["yB5Falla"].reference == 6187
+    assert cfg.signals_by_tag["yB5Falla"].pdu_address == 6186
 
 
 def test_sca_table_labels_and_production_counts_only():
@@ -126,8 +198,8 @@ def test_sca_table_labels_and_production_counts_only():
     expected = {
         "analog_reads": ("SCA - lectura AN [0]", 8, 0),
         "analog_setpoints": ("SCA - consigna AN [1]", 17, 8),
-        "digital_reads": ("SCA - lectura DI [2]", 51, 0),
-        "digital_commands": ("SCA - comando DI [3]", 10, 25),
+        "digital_reads": ("SCA - lectura DI [2]", 46, 0),
+        "digital_commands": ("SCA - comando DI [3]", 10, 20),
     }
     for table_name, (label, production_count, injection_count) in expected.items():
         table = cfg.tables[table_name]
@@ -136,7 +208,7 @@ def test_sca_table_labels_and_production_counts_only():
         assert len([s for s in table.signals if s.facade]) == injection_count
 
 
-def test_removed_injection_tags_are_not_defined():
+def test_removed_exchange_tags_are_not_defined():
     cfg = load_config("config/default.yaml")
     removed = {
         "yResRb", "yResAt", "yResBj",
@@ -146,6 +218,9 @@ def test_removed_injection_tags_are_not_defined():
         "yB3Aut", "yB3Ok", "yB3InE",
         "yB4Aut", "yB4Ok", "yB4InE",
         "yB5Aut", "yB5Ok", "yB5InE",
+        "yB1Bypass", "yB2Bypass", "yB3Bypass", "yB4Bypass", "yB5Bypass",
+        "bB1Bypass", "bB2Bypass", "bB3Bypass", "bB4Bypass", "bB5Bypass",
+        "bB1Arr", "bB2Arr", "bB3Arr", "bB4Arr", "bB5Arr",
     }
     assert not (removed & set(cfg.signals_by_tag))
 
@@ -161,8 +236,10 @@ def test_injection_targets_are_explicit():
     assert cfg.signals_by_tag["yRFF"].injects_tag == "bRFF"
     assert cfg.signals_by_tag["yRFF"].injection_group == "digital_reads"
     assert cfg.signals_by_tag["yB5Falla"].injects_tag == "bB5Falla"
-    assert cfg.signals_by_tag["bB1Arr"].row == 33
-    assert cfg.signals_by_tag["bB5Arr"].row == 80
+    assert cfg.signals_by_tag["bB1InE"].row == 30
+    assert cfg.signals_by_tag["bB1Arndo"].row == 32
+    assert cfg.signals_by_tag["bB5InE"].row == 74
+    assert cfg.signals_by_tag["bB5Arndo"].row == 76
 
 
 def test_polling_excludes_injection_memory_from_reads():
@@ -262,8 +339,8 @@ def test_modbus_points_match_ace3600_formula_ranges():
     expected = {
         "analog_reads": ("input_register", 0, 30001, 30026),
         "analog_setpoints": ("holding_register", 1, 42049, 42083),
-        "digital_reads": ("discrete_input", 2, 14097, 14177),
-        "digital_commands": ("coil", 3, 6145, 6192),
+        "digital_reads": ("discrete_input", 2, 14097, 14173),
+        "digital_commands": ("coil", 3, 6145, 6187),
     }
     for table_name, (kind, z, first_ref, last_ref) in expected.items():
         table = cfg.tables[table_name]
@@ -274,19 +351,19 @@ def test_modbus_points_match_ace3600_formula_ranges():
     assert cfg.signals_by_tag["yNvCamAsp"].reference == ace_reference("holding_register", 1, 27)
     assert cfg.signals_by_tag["yNvRes"].reference == ace_reference("holding_register", 1, 28)
     assert cfg.signals_by_tag["yRFF"].reference == ace_reference("coil", 3, 23)
-    assert cfg.signals_by_tag["yB5Falla"].reference == ace_reference("coil", 3, 47)
+    assert cfg.signals_by_tag["yB5Falla"].reference == ace_reference("coil", 3, 42)
 
 
 def test_pump_cards_include_arr_emar_generation_and_specific_pills():
     js = (SERVICE_APP / "static/app.js").read_text(encoding="utf-8")
     html = (SERVICE_APP / "static/index.html").read_text(encoding="utf-8")
 
-    assert "bB1Arr" in Path("config/default.yaml").read_text(encoding="utf-8")
+    assert "bB1Arndo" in Path("config/default.yaml").read_text(encoding="utf-8")
     assert "generar EMar" in js
     assert "processGenerateEmar" in js
     assert "yB${pump}EMar" in js
     assert "Automatico" in js
-    assert "bB${pump}Arr" not in js  # el tag llega agrupado como p.arr desde backend
+    assert "bB${pump}Arndo" not in js  # el tag llega agrupado como p.arr desde backend
     assert "PLC: sin datos" in html
     assert "Driver: modbus" in html
     assert "RTU (0)" not in js

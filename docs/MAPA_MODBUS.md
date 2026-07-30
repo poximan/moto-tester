@@ -9,8 +9,8 @@ Modo de direccionamiento: `modicon_reference`. Las referencias verificadas se ca
 |---|---|---:|---:|---:|---:|---:|---:|
 | `SCA - lectura AN [0]` | input register | 0 | 0 | 0 / 30001 | 25 / 30026 | 0 | 25 |
 | `SCA - consigna AN [1]` | holding register | 1 | 0 | 0 / 42049 | 34 / 42083 | 2048 | 2082 |
-| `SCA - lectura DI [2]` | input status | 2 | 0 | 0 / 14097 | 80 / 14177 | 4096 | 4176 |
-| `SCA - comando DI [3]` | coil | 3 | 0 | 0 / 6145 | 47 / 6192 | 6144 | 6191 |
+| `SCA - lectura DI [2]` | input status | 2 | 0 | 0 / 14097 | 76 / 14173 | 4096 | 4172 |
+| `SCA - comando DI [3]` | coil | 3 | 0 | 0 / 6145 | 42 / 6187 | 6144 | 6186 |
 
 La lectura periódica corta en el último tag de producción de las tablas escribibles: fila 21 para consignas analógicas y fila 17 para comandos digitales. Las filas `y*` no se leen como feedback.
 
@@ -22,7 +22,7 @@ La UI muestra estas cuatro tablas como en el esquema SCA, en grilla 2x2 y con ca
 |---:|---|---|---:|---:|---:|---:|---:|
 | 0 | `SCA - lectura AN [0]` | input register | 04 | 30001 | 0 | 26 | 8 |
 | 1 | `SCA - consigna AN [1]` | holding register | 03 | 42049 | 2048 | 22 | 17 |
-| 2 | `SCA - lectura DI [2]` | input status | 02 | 14097 | 4096 | 81 | 51 |
+| 2 | `SCA - lectura DI [2]` | input status | 02 | 14097 | 4096 | 77 | 46 |
 | 3 | `SCA - comando DI [3]` | coil | 01 | 6145 | 6144 | 18 | 10 |
 
 La lectura periódica de producción no incluye la zona `y*`. Esas posiciones existen solo como área de escritura de inyección hacia el controlador. Para representar proceso se leen únicamente `e*`/`b*` del intercambio genuino.
@@ -32,7 +32,7 @@ La lectura periódica de producción no incluye la zona `y*`. Esas posiciones ex
 | Inyección | Entra por | Primera fila | Primera ref | Última fila | Última ref | Pisa |
 |---|---|---:|---:|---:|---:|---|
 | Lecturas analógicas | `SCA - consigna AN [1]` | 27 | 42076 | 34 | 42083 | `SCA - lectura AN [0]` |
-| Lecturas digitales | `SCA - comando DI [3]` | 23 | 6168 | 47 | 6192 | `SCA - lectura DI [2]` |
+| Lecturas digitales | `SCA - comando DI [3]` | 23 | 6168 | 42 | 6187 | `SCA - lectura DI [2]` |
 
 ## Tags de inyección analógica
 
@@ -49,7 +49,26 @@ La lectura periódica de producción no incluye la zona `y*`. Esas posiciones ex
 
 ## Tags de inyección digital
 
-La primera señal es `yRFF` en fila 23/ref 6168 y la última es `yB5Falla` en fila 47/ref 6192. La tabla digital de inyección ahora contiene solo `yRFF`, peras de nivel de reserva/cámara, y por bomba `RTU`, `EMar`, `Bypass` y `Falla`.
+La primera señal es `yRFF` en fila 23/ref 6168 y la última es `yB5Falla` en fila 42/ref 6187. La tabla digital de inyección contiene `yRFF`, las peras de nivel de reserva/cámara y, por bomba, `RTU`, `EMar` y `Falla`.
+
+| Grupo | Tags y filas |
+|---|---|
+| General y niveles | `yRFF` 23, `yResNvAtP` 24, `yResNvBjP` 25, `yCAspNvAtP` 26, `yCAspNvBjP` 27 |
+| Bomba 1 | `yB1RTU` 28, `yB1EMar` 29, `yB1Falla` 30 |
+| Bomba 2 | `yB2RTU` 31, `yB2EMar` 32, `yB2Falla` 33 |
+| Bomba 3 | `yB3RTU` 34, `yB3EMar` 35, `yB3Falla` 36 |
+| Bomba 4 | `yB4RTU` 37, `yB4EMar` 38, `yB4Falla` 39 |
+| Bomba 5 | `yB5RTU` 40, `yB5EMar` 41, `yB5Falla` 42 |
+
+## Comandos digitales de producción
+
+| Bomba | `cB#Aut` | `cB#Mr` |
+|---:|---:|---:|
+| 1 | 0 | 1 |
+| 2 | 5 | 6 |
+| 3 | 9 | 10 |
+| 4 | 12 | 13 |
+| 5 | 16 | 17 |
 
 
 ## Presentación web
@@ -59,12 +78,16 @@ Las tablas de producción se renderizan con columnas mínimas `fila`, `Name` y `
 
 ## Actualización de lecturas digitales de bombas
 
-Cada paquete de bomba incorpora `bB#Arr` como último bit del grupo. Ese bit permite distinguir orden/arranque respecto del feedback de marcha `bB#EMar`:
+Cada paquete de bomba conserva `bB#InE` e incorpora `bB#Arndo` como último bit del grupo. Este último permite distinguir orden/arranque respecto del feedback de marcha `bB#EMar`:
 
-| Bomba | RTU | Aut | Ok | EMar | Bypass | InE | Falla | Arr |
-|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 1 | 26 | 27 | 28 | 29 | 30 | 31 | 32 | 33 |
-| 2 | 38 | 39 | 40 | 41 | 42 | 43 | 44 | 45 |
-| 3 | 50 | 51 | 52 | 53 | 54 | 55 | 56 | 57 |
-| 4 | 61 | 62 | 63 | 64 | 65 | 66 | 67 | 68 |
-| 5 | 73 | 74 | 75 | 76 | 77 | 78 | 79 | 80 |
+| Bomba | RTU | Aut | Ok | EMar | InE | Falla | Arndo |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 26 | 27 | 28 | 29 | 30 | 31 | 32 |
+| 2 | 37 | 38 | 39 | 40 | 41 | 42 | 43 |
+| 3 | 48 | 49 | 50 | 51 | 52 | 53 | 54 |
+| 4 | 59 | 60 | 61 | 62 | 63 | 64 | 65 |
+| 5 | 70 | 71 | 72 | 73 | 74 | 75 | 76 |
+
+El mapa conserva además la variable interna indicada por SCA en la columna `Value`. Para cada bomba la regla es `bB#RTU -> iB#RTU`, `bB#Aut -> B#Aut`, `bB#Ok -> B#Ok`, `bB#EMar -> iB#EMar`, `bB#InE -> B#InE`, `bB#Falla -> iB#Falla` y `bB#Arndo -> mB#Arr`.
+
+Las restantes correspondencias son `eNvCamAsp -> iNvCamAsp`, `eNvRes -> iNvRes`, `eTurb -> iTurb`, `eB#Hs -> B#Hs`, `bRFF -> iRFF`, `bResRb -> ResRb`, `bResAt -> ResAt`, `bResBj -> ResBj`, `bResNvAtP -> ResNvAtP`, `bResNvBjP -> ResNvBjP`, `bCAspRb -> CAspRb`, `bCAspAt -> CAspAt`, `bCAspBj -> CAspBj`, `bCAspNvAtP -> CAspNvAtP` y `bCAspNvBjP -> CAspNvBjP`. Se exponen como `mapped_value` en la configuración/API y no reemplazan el valor vivo leído por Modbus.
