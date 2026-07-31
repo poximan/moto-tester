@@ -42,6 +42,23 @@ class WriteModeBody(BaseModel):
     source: str = Field(default="web", description="Origen del cambio")
 
 
+class PollingControlBody(BaseModel):
+    enabled: bool | None = Field(default=None, description="Habilita la lectura de la FC")
+    sample_rate_ms: int | None = Field(
+        default=None,
+        ge=250,
+        le=3_600_000,
+        description="Intervalo entre lecturas de la FC en milisegundos",
+    )
+    source: str = Field(default="web", description="Origen del cambio")
+
+    @model_validator(mode="after")
+    def at_least_one_setting(self) -> "PollingControlBody":
+        if self.enabled is None and self.sample_rate_ms is None:
+            raise ValueError("Debe informar enabled o sample_rate_ms")
+        return self
+
+
 class EmulatorValveBody(BaseModel):
     inlet_open_pct: float | None = Field(default=None, ge=0, le=100)
     outlet_open_pct: float | None = Field(default=None, ge=0, le=100)

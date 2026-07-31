@@ -12,10 +12,32 @@
         <h1>Trasvase Tester</h1>
         <p>Web + master Modbus/TCP · frontera de emulación</p>
       </div>
+      <div class="fc-controls" aria-label="Control de lecturas Modbus">
+        <div class="fc-control" data-function-code="01">
+          <button id="fc-toggle-01" class="fc-toggle is-active" type="button" onclick="toggleFunctionCode('01')" title="Control de lectura FC1">FC1</button>
+          <label for="fc-rate-01">cada <input id="fc-rate-01" type="number" min="250" max="3600000" step="250" value="2000" onchange="setFunctionSampleRate('01')" /> ms</label>
+          <span id="fc-status-01" class="fc-status">activa</span>
+        </div>
+        <div class="fc-control" data-function-code="02">
+          <button id="fc-toggle-02" class="fc-toggle is-active" type="button" onclick="toggleFunctionCode('02')" title="Control de lectura FC2">FC2</button>
+          <label for="fc-rate-02">cada <input id="fc-rate-02" type="number" min="250" max="3600000" step="250" value="2000" onchange="setFunctionSampleRate('02')" /> ms</label>
+          <span id="fc-status-02" class="fc-status">activa</span>
+        </div>
+        <div class="fc-control" data-function-code="03">
+          <button id="fc-toggle-03" class="fc-toggle is-active" type="button" onclick="toggleFunctionCode('03')" title="Control de lectura FC3">FC3</button>
+          <label for="fc-rate-03">cada <input id="fc-rate-03" type="number" min="250" max="3600000" step="250" value="2000" onchange="setFunctionSampleRate('03')" /> ms</label>
+          <span id="fc-status-03" class="fc-status">activa</span>
+        </div>
+        <div class="fc-control" data-function-code="04">
+          <button id="fc-toggle-04" class="fc-toggle is-active" type="button" onclick="toggleFunctionCode('04')" title="Control de lectura FC4">FC4</button>
+          <label for="fc-rate-04">cada <input id="fc-rate-04" type="number" min="250" max="3600000" step="250" value="2000" onchange="setFunctionSampleRate('04')" /> ms</label>
+          <span id="fc-status-04" class="fc-status">activa</span>
+        </div>
+      </div>
       <div class="status-strip">
         <span id="conn-pill" class="pill pill-warn" title="Estado de conexión Modbus/TCP contra el PLC">PLC: sin datos</span>
         <button id="write-pill" class="pill pill-safe mode-toggle" type="button" onclick="toggleWriteMode()" title="Cambia el modo persistido en runtime/write_mode.txt">read_only</button>
-        <span id="mode-pill" class="pill" title="Modo operativo del driver: Modbus/TCP real o simulación local">Driver: modbus</span>
+        <span id="mode-pill" class="pill" title="Origen de los valores presentados">Fuente: PLC</span>
       </div>
     </header>
 
@@ -139,17 +161,16 @@
         <div class="section-head compact-head">
           <div>
             <h2>Diagnóstico y logs</h2>
-            <p>Archivos de log persistidos en <code>runtime/logs</code>. Útiles para ver conexión Modbus, lecturas, escrituras y errores del emulador.</p>
+            <p>Elegí un archivo para consultar sus últimas líneas, o abrí el diagnóstico para ver conexión, FC activas y errores recientes.</p>
           </div>
           <div class="logs-actions">
-            <button type="button" onclick="loadDiagnostics()">diagnóstico</button>
-            <button type="button" onclick="loadLogsIndex()">listar logs</button>
-            <button type="button" onclick="loadSelectedLog()">actualizar log</button>
+            <button type="button" onclick="loadDiagnostics()">Ver diagnóstico</button>
           </div>
         </div>
         <div class="logs-toolbar">
-          <select id="log-select" aria-label="Seleccionar log"></select>
-          <input id="log-lines" type="number" min="20" max="5000" step="50" value="300" />
+          <label>Archivo <select id="log-select" aria-label="Seleccionar archivo de log" onchange="loadSelectedLog()"></select></label>
+          <label>Últimas líneas <input id="log-lines" type="number" min="20" max="5000" step="50" value="300" /></label>
+          <button type="button" onclick="loadSelectedLog()">Recargar archivo</button>
           <span id="logs-meta" class="meta">sin cargar</span>
         </div>
         <pre id="logs-view" class="logs-view">Sin logs cargados.</pre>

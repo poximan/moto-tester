@@ -7,6 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "trasvase-tester"))
 
 from app.config import load_config
+from app.polling_control import PollingControlStore
 from app.write_mode import READ_ONLY, WRITE_ENABLED, WriteModeStore
 
 
@@ -21,7 +22,7 @@ def test_default_config_map():
     assert cfg.controller.host == "10.10.9.122"
     assert cfg.controller.port == 502
     assert cfg.controller.unit_id == 10
-    assert cfg.polling.interval_ms == 1000
+    assert cfg.polling.interval_ms == 2000
     assert cfg.polling.max_stale_ms == 5000
     assert cfg.tables["analog_reads"].start_pdu == 0
     assert cfg.signals_by_tag["eNvCamAsp"].reference == 30001
@@ -49,8 +50,8 @@ def test_exchange_map_matches_the_four_sca_tables():
             "yB1Hs": 30, "yB2Hs": 31, "yB3Hs": 32, "yB4Hs": 33, "yB5Hs": 34,
         },
         "digital_commands": {
-            "cB1Aut": 0, "cB1Mr": 1, "cB2Aut": 5, "cB2Mr": 6,
-            "cB3Aut": 9, "cB3Mr": 10, "cB4Aut": 12, "cB4Mr": 13,
+            "cB1Aut": 0, "cB1Mr": 1, "cB2Aut": 4, "cB2Mr": 5,
+            "cB3Aut": 8, "cB3Mr": 9, "cB4Aut": 12, "cB4Mr": 13,
             "cB5Aut": 16, "cB5Mr": 17,
             "yRFF": 23, "yResNvAtP": 24, "yResNvBjP": 25,
             "yCAspNvAtP": 26, "yCAspNvBjP": 27,
@@ -155,6 +156,33 @@ def test_write_mode_store_persists_and_fails_closed(tmp_path):
     assert snap["mode"] == READ_ONLY
     assert snap["write_enabled"] is False
     assert snap["error"]
+
+
+def test_modbus_polling_defaults_and_persists_by_function_code(tmp_path):
+    path = tmp_path / "runtime" / "modbus_polling.json"
+    store = PollingControlStore(path)
+
+    snapshot = store.snapshot()
+    assert set(snapshot["functions"]) == {"01", "02", "03", "04"}
+    assert all(item["enabled"] for item in snapshot["functions"].values())
+    assert all(item["sample_rate_ms"] == 2000 for item in snapshot["functions"].values())
+
+    store.update("FC2", enabled=False, sample_rate_ms=3500)
+    reloaded = PollingControlStore(path).snapshot()
+    assert reloaded["functions"]["02"]["enabled"] is False
+    assert reloaded["functions"]["02"]["sample_rate_ms"] == 3500
+
+
+def test_modbus_polling_rejects_incomplete_persisted_config(tmp_path):
+    path = tmp_path / "modbus_polling.json"
+    path.write_text('{"01": {"enabled": true, "sample_rate_ms": 2000}}', encoding="utf-8")
+
+    try:
+        PollingControlStore(path)
+    except ValueError as exc:
+        assert "exactamente" in str(exc)
+    else:
+        raise AssertionError("Una configuracion incompleta debe fallar al iniciar")
 
 
 def test_injection_lives_only_inside_setpoints_and_commands():
@@ -365,7 +393,7 @@ def test_pump_cards_include_arr_emar_generation_and_specific_pills():
     assert "Automatico" in js
     assert "bB${pump}Arndo" not in js  # el tag llega agrupado como p.arr desde backend
     assert "PLC: sin datos" in html
-    assert "Driver: modbus" in html
+    assert "Fuente: PLC" in html
     assert "RTU (0)" not in js
     assert "Tablero (1)" not in js
 
@@ -380,6 +408,25 @@ def test_logs_ui_and_api_are_present():
     assert "@app.get(\"/api/logs\")" in main
     assert "@app.get(\"/api/logs/{log_name}\")" in main
     assert "@app.get(\"/api/diagnostics\")" in main
+    assert "Ver diagnóstico" in html
+    assert "Recargar archivo" in html
+    assert "Listar logs" not in html
+
+
+def test_ui_controls_each_read_function_code_and_sample_rate():
+    html = (SERVICE_APP / "static/index.html").read_text(encoding="utf-8")
+    js = (SERVICE_APP / "static/app.js").read_text(encoding="utf-8")
+    main = (SERVICE_APP / "main.py").read_text(encoding="utf-8")
+
+    for function_code in ("01", "02", "03", "04"):
+        assert f'id="fc-toggle-{function_code}"' in html
+        assert f'id="fc-rate-{function_code}"' in html
+    assert 'value="2000"' in html
+    assert "toggleFunctionCode" in js
+    assert "setFunctionSampleRate" in js
+    assert "api/modbus-polling" in js
+    assert '@app.get("/api/modbus-polling")' in main
+    assert '@app.put("/api/modbus-polling/{function_code}")' in main
 
 
 def test_sca_window_title_shows_modbus_details():

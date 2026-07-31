@@ -13,6 +13,8 @@ const injectionStateOverrides = new Map();
 const generateEmarEnabled = new Map();
 const generatedEmarLastValue = new Map();
 
+const readFunctionCodes = ["01", "02", "03", "04"];
+
 const scaTableOrder = ["analog_reads", "analog_setpoints", "digital_reads", "digital_commands"];
 const pumpImages = {
   gray: "static/assets/pump_gray.png",
@@ -123,6 +125,101 @@ async function toggleWriteMode() {
   const current = lastSnapshot?.write_mode?.mode || "read_only";
   const next = current === "write_enabled" ? "read_only" : "write_enabled";
   await setWriteMode(next);
+}
+
+function currentFunctionControl(functionCode) {
+  return lastSnapshot?.modbus_polling?.functions?.[functionCode]
+    || config?.modbus_polling?.functions?.[functionCode]
+    || {enabled: true, sample_rate_ms: 2000};
+}
+
+function functionCodeMetadata(functionCode) {
+  for (const table of Object.values(config?.tables || {})) {
+    const productionSignals = table.signals.filter(signal => !signal.facade);
+    if (!productionSignals.some(signal => signal.function_code === functionCode)) continue;
+    const lastRow = Math.max(...productionSignals.map(signal => signal.row));
+    return {
+      label: table.label.replace(/^SCA\s*-\s*/i, ""),
+      range: `${table.start_ref}..${table.start_ref + lastRow}`,
+    };
+  }
+  return {label: `lectura FC${Number(functionCode)}`, range: "sin mapa"};
+}
+
+async function updateFunctionPolling(functionCode, values) {
+  const button = $(`fc-toggle-${functionCode}`);
+  const input = $(`fc-rate-${functionCode}`);
+  if (button) button.disabled = true;
+  if (input) input.disabled = true;
+  try {
+    const response = await fetch(appPath(`api/modbus-polling/${functionCode}`), {
+      method: "PUT",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({...values, source: "web"}),
+    });
+    if (!response.ok) throw new Error(await response.text());
+    const updated = await response.json();
+    const polling = lastSnapshot?.modbus_polling || config?.modbus_polling;
+    if (polling?.functions) {
+      polling.functions[functionCode] = {
+        ...polling.functions[functionCode],
+        ...updated,
+      };
+      polling.revision = updated.revision;
+    }
+    renderFunctionControls(polling);
+  } catch (err) {
+    alert(`No se pudo actualizar FC${Number(functionCode)}: ${err}`);
+    renderFunctionControls(lastSnapshot?.modbus_polling || config?.modbus_polling);
+  } finally {
+    if (button) button.disabled = false;
+    if (input) input.disabled = false;
+  }
+}
+
+async function toggleFunctionCode(functionCode) {
+  const current = currentFunctionControl(functionCode);
+  await updateFunctionPolling(functionCode, {enabled: !current.enabled});
+}
+
+async function setFunctionSampleRate(functionCode) {
+  const input = $(`fc-rate-${functionCode}`);
+  const sampleRateMs = Number(input?.value);
+  if (!Number.isInteger(sampleRateMs) || sampleRateMs < 250 || sampleRateMs > 3600000) {
+    alert("El sample rate debe ser un entero entre 250 y 3600000 ms.");
+    renderFunctionControls(lastSnapshot?.modbus_polling || config?.modbus_polling);
+    return;
+  }
+  await updateFunctionPolling(functionCode, {sample_rate_ms: sampleRateMs});
+}
+
+function renderFunctionControls(polling) {
+  readFunctionCodes.forEach((functionCode) => {
+    const control = polling?.functions?.[functionCode];
+    if (!control) return;
+    const button = $(`fc-toggle-${functionCode}`);
+    const input = $(`fc-rate-${functionCode}`);
+    const status = $(`fc-status-${functionCode}`);
+    const meta = functionCodeMetadata(functionCode);
+    if (button) {
+      button.classList.toggle("is-active", Boolean(control.enabled));
+      button.classList.toggle("is-inactive", !control.enabled);
+      button.classList.toggle("has-error", Boolean(control.last_error));
+      button.setAttribute("aria-pressed", String(Boolean(control.enabled)));
+      button.title = `FC${Number(functionCode)} · ${meta.label} · ${meta.range} · ${control.enabled ? "activa" : "pausada"}`;
+    }
+    if (input && document.activeElement !== input) input.value = control.sample_rate_ms;
+    if (status) {
+      const statusText = !control.enabled
+        ? "pausada"
+        : control.last_error
+          ? "con error"
+          : "activa";
+      setText(status, statusText);
+      status.className = `fc-status ${control.last_error ? "has-error" : ""}`.trim();
+      status.title = control.last_error || `${meta.label}, ${meta.range}`;
+    }
+  });
 }
 
 function readInjectionDraft(tag) {
@@ -816,8 +913,17 @@ function renderSnapshot(snap) {
   setPill($("conn-pill"), conn.connected ? "PLC: conectado" : "PLC: desconectado", conn.connected ? "pill-ok" : "pill-bad");
   const writeMode = snap.write_mode || {mode: "read_only", write_enabled: false};
   setPill($("write-pill"), writeMode.write_enabled ? "write_enabled" : "read_only", writeMode.write_enabled ? "pill-bad" : "pill-safe");
-  const driverMode = conn.mode === "simulation" ? "Driver: simulación" : "Driver: Modbus/TCP";
-  setPill($("mode-pill"), driverMode, conn.mode === "simulation" ? "pill-warn" : "");
+  const sourceText = conn.mode === "simulation"
+    ? "Fuente: simulador"
+    : `Fuente: PLC ${snap.controller?.host || config?.controller?.host || ""} · ID ${snap.controller?.unit_id || config?.controller?.unit_id || "--"}`;
+  setPill($("mode-pill"), sourceText, conn.mode === "simulation" ? "pill-warn" : "");
+  const modePill = $("mode-pill");
+  if (modePill) {
+    modePill.title = conn.mode === "simulation"
+      ? "Los valores presentados son generados localmente; no hay tráfico Modbus."
+      : "Los valores presentados provienen del PLC por Modbus/TCP.";
+  }
+  renderFunctionControls(snap.modbus_polling);
   ["eNvCamAsp", "eNvRes", "eTurb"].forEach(tag => renderSignal(tag, snap));
   updatePumps(snap);
   updateProcessPumpBank(snap);
@@ -846,10 +952,6 @@ function connectStream() {
   clearTimeout(streamReconnectTimer);
   if (streamSocket && [WebSocket.OPEN, WebSocket.CONNECTING].includes(streamSocket.readyState)) return;
   streamSocket = new WebSocket(streamUrl());
-  streamSocket.addEventListener("open", () => {
-    const mode = $("mode-pill");
-    if (mode) mode.title = "WebSocket activo. El estado PLC se informa en la cápsula PLC.";
-  });
   streamSocket.addEventListener("message", (event) => {
     try {
       handleStreamMessage(JSON.parse(event.data));
@@ -869,6 +971,7 @@ function connectStream() {
 async function loadConfig() {
   const response = await fetch(appPath("api/config"), {cache: "no-store"});
   config = await response.json();
+  renderFunctionControls(config.modbus_polling);
 }
 
 function wireFilters() {

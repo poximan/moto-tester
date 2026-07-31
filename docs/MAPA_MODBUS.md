@@ -27,6 +27,8 @@ La UI muestra estas cuatro tablas como en el esquema SCA, en grilla 2x2 y con ca
 
 La lectura periódica de producción no incluye la zona `y*`. Esas posiciones existen solo como área de escritura de inyección hacia el controlador. Para representar proceso se leen únicamente `e*`/`b*` del intercambio genuino.
 
+Cada FC de lectura tiene habilitación y sample rate propios, persistidos en `runtime/modbus_polling.json`. El valor inicial es `enabled=true` y `sample_rate_ms=2000` para las cuatro. El planificador desfasa el comienzo de las consultas e independiza sus errores; las escrituras FC05/FC06 no dependen de estas llaves.
+
 ## Zona de inyección
 
 | Inyección | Entra por | Primera fila | Primera ref | Última fila | Última ref | Pisa |
@@ -65,8 +67,8 @@ La primera señal es `yRFF` en fila 23/ref 6168 y la última es `yB5Falla` en fi
 | Bomba | `cB#Aut` | `cB#Mr` |
 |---:|---:|---:|
 | 1 | 0 | 1 |
-| 2 | 5 | 6 |
-| 3 | 9 | 10 |
+| 2 | 4 | 5 |
+| 3 | 8 | 9 |
 | 4 | 12 | 13 |
 | 5 | 16 | 17 |
 

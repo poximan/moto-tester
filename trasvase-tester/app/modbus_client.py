@@ -56,12 +56,14 @@ class ModbusPoller:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._client: ModbusTcpClient | None = None
+        self._next_due: dict[str, float] = {}
+        self._polling_revision = -1
 
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
             return
         LOGGER.info(
-            "modbus poller start host=%s port=%s unit_id=%s timeout_s=%s interval_ms=%s",
+            "modbus poller start host=%s port=%s unit_id=%s timeout_s=%s default_interval_ms=%s",
             self.config.controller.host,
             self.config.controller.port,
             self.config.controller.unit_id,
@@ -80,25 +82,63 @@ class ModbusPoller:
             self._client.close()
 
     def _run(self) -> None:
-        interval_s = max(self.config.polling.interval_ms / 1000.0, 0.1)
         while not self._stop.is_set():
-            start = time.monotonic()
-            try:
-                self._ensure_client()
+            polling = self.state.polling_control_snapshot()
+            if polling["revision"] != self._polling_revision:
+                self._reset_schedule(polling)
+                self._polling_revision = int(polling["revision"])
+
+            now = time.monotonic()
+            due_tables: list[TableDefinition] = []
+            for table in self.config.tables.values():
+                signals = self._pollable_signals(table)
+                if not signals:
+                    continue
+                function_code = signals[0].function_code
+                control = polling["functions"][function_code]
+                if not control["enabled"]:
+                    self._next_due.pop(function_code, None)
+                    continue
+                if now >= self._next_due.get(function_code, 0.0):
+                    due_tables.append(table)
+                    self._next_due[function_code] = (
+                        now + int(control["sample_rate_ms"]) / 1000.0
+                    )
+
+            if due_tables:
                 self.state.mark_poll_start()
-                self._poll_once()
+                self._poll_tables(due_tables)
+
+            try:
                 self._process_writes()
-                self.state.mark_poll_success()
             except Exception as exc:  # noqa: BLE001 - poller must not die
                 error = f"{type(exc).__name__}: {exc}"
-                LOGGER.exception("modbus poll cycle error: %s", error)
+                LOGGER.exception("modbus write cycle error: %s", error)
                 self.state.mark_poll_error(error)
-                self.state.add_event("poll_error", error, level="error")
+                self.state.add_event("write_cycle_error", error, level="error")
                 self._safe_close()
-                time.sleep(self.config.controller.reconnect_backoff_s)
+                self._stop.wait(self.config.controller.reconnect_backoff_s)
 
-            elapsed = time.monotonic() - start
-            time.sleep(max(interval_s - elapsed, 0.0))
+            self._stop.wait(0.1)
+
+    def _reset_schedule(self, polling: dict[str, Any]) -> None:
+        """Desfasa el primer ciclo para evitar una rafaga de cuatro pedidos."""
+        self._next_due.clear()
+        enabled = [
+            code
+            for code, control in polling["functions"].items()
+            if control["enabled"]
+        ]
+        if not enabled:
+            return
+        now = time.monotonic()
+        shortest_interval_s = min(
+            int(polling["functions"][code]["sample_rate_ms"]) / 1000.0
+            for code in enabled
+        )
+        spacing_s = shortest_interval_s / len(enabled)
+        for index, function_code in enumerate(enabled):
+            self._next_due[function_code] = now + index * spacing_s
 
     def _ensure_client(self) -> None:
         if self._client is not None and self._client.connected:
@@ -129,26 +169,57 @@ class ModbusPoller:
             finally:
                 self._client = None
 
-    def _poll_once(self) -> None:
-        for table in self.config.tables.values():
-            if table.count <= 0:
+    def _poll_tables(self, tables: list[TableDefinition]) -> None:
+        try:
+            self._ensure_client()
+        except Exception as exc:  # noqa: BLE001
+            error = f"{type(exc).__name__}: {exc}"
+            for table in tables:
+                signals = self._pollable_signals(table)
+                if not signals:
+                    continue
+                function_code = signals[0].function_code
+                self.state.polling_control.mark_attempt(function_code)
+                self.state.polling_control.mark_error(function_code, error)
+                self.state.mark_table_error(table.name, error)
+            self.state.mark_poll_error(error)
+            self.state.add_event("poll_connection_error", error, level="error")
+            self._safe_close()
+            self._stop.wait(self.config.controller.reconnect_backoff_s)
+            return
+
+        successes = 0
+        errors: list[str] = []
+        for table in tables:
+            signals = self._pollable_signals(table)
+            if not signals:
                 continue
+            function_code = signals[0].function_code
+            self.state.polling_control.mark_attempt(function_code)
             try:
                 updates = self._read_table(table)
                 if updates:
                     self.state.update_values(updates, quality="good")
+                self.state.polling_control.mark_success(function_code)
+                successes += 1
             except Exception as exc:  # noqa: BLE001
                 error = f"{type(exc).__name__}: {exc}"
                 LOGGER.exception("modbus table read error table=%s error=%s", table.name, error)
+                self.state.polling_control.mark_error(function_code, error)
                 self.state.mark_table_error(table.name, error)
-                if table.optional:
-                    self.state.add_event(
-                        "optional_table_error",
-                        f"Tabla opcional {table.name} no disponible: {error}",
-                        level="warning",
-                    )
-                    continue
-                raise
+                errors.append(f"FC{int(function_code)}: {error}")
+                self.state.add_event(
+                    "table_poll_error",
+                    f"FC{int(function_code)} {table.name}: {error}",
+                    level="error",
+                )
+
+        if successes:
+            self.state.mark_poll_success()
+        elif errors:
+            self.state.mark_poll_error("; ".join(errors))
+            if self._client is not None and not self._client.connected:
+                self._safe_close()
 
     @staticmethod
     def _pollable_signals(table: TableDefinition) -> list[Signal]:
@@ -245,6 +316,8 @@ class ModbusPoller:
             raise RuntimeError(str(result))
 
     def _process_writes(self) -> None:
+        if not self.state.has_pending_writes():
+            return
         if not self.state.writes_enabled():
             for request in self.state.drain_writes():
                 self.state.write_result(
@@ -255,7 +328,7 @@ class ModbusPoller:
                 )
             return
         if self._client is None:
-            raise RuntimeError("Cliente Modbus no inicializado")
+            self._ensure_client()
         for request in self.state.drain_writes():
             self._write_request(request)
 

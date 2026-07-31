@@ -14,6 +14,7 @@ Hay una separación estricta:
 
 - `.env`: **única fuente de verdad para configuración de despliegue**: PLC, puerto publicado en el host, polling, timeouts, modo simulación y parámetros del servicio experto.
 - `runtime/write_mode.txt`: **única fuente de verdad del modo de escritura**, persistente y editable como texto. Se crea automáticamente en `read_only` si no existe. Valores válidos: `read_only` o `write_enabled`.
+- `runtime/modbus_polling.json`: control persistente e independiente de las lecturas FC01, FC02, FC03 y FC04. Todas nacen activas usando `POLL_INTERVAL_MS` —2000 ms en el `.env.example`—; la botonera de cabecera permite pausar cada una o cambiar su período sin afectar las escrituras FC05/FC06.
 - `config/default.yaml`: **solo mapa Modbus y estructura de señales**: tablas, tags, filas, tipos, marcas de inyección y, cuando SCA la informa, variable interna `mapped_value`.
 
 El `docker-compose.yml` se limita a la orquestación: carga `.env`, publica `WEB_HOST_PORT`, conecta redes y monta `./runtime`. Los puertos internos `8080` y `8090`, los hosts de escucha, los comandos y el healthcheck pertenecen a sus Dockerfiles. La carpeta `runtime/` es local y generada; no forma parte de la imagen ni del repositorio. El código rechaza `server`, `controller`, `polling`, `safety` o `runtime` dentro de `config/default.yaml`.
@@ -26,7 +27,10 @@ Modo equivalente a conectar un SCADA de lectura:
 - Lee consignas analógicas reales `42049..42070` con FC03. La zona `y*` no se lee; solo se escribe para inyección y empieza en fila 27.
 - Lee entradas digitales reales `14097..14173` con FC02. Conserva `bB#InE` e incluye `bB#Arndo` al final de cada paquete de bomba.
 - Lee comandos digitales reales `6145..6162` con FC01. La zona `y*` no se lee; solo se escribe para inyección y empieza en fila 23.
+- Las cuatro lecturas se planifican por separado y con inicio desfasado para no concentrar una ráfaga sobre el controlador. Un error de una FC queda aislado y no descarta las lecturas correctas de las demás.
 - La web permite generar comandos. Con `runtime/write_mode.txt = read_only` solo los registra localmente; con `write_enabled` se escriben al PLC. Las cuatro tablas SCA visibles muestran exclusivamente tags de producción, con filas internas vacías para respetar la distribución real. La zona `y*` no aparece en estas cuatro tablas; queda en las dos tablas de inyección. La actualización de estado en la web llega por WebSocket (`/ws/stream`) y se aplica incrementalmente sobre celdas ya existentes; no hay polling `fetch` periódico del snapshot ni reconstrucción de tablas durante el ciclo de actualización.
+
+La cápsula `Fuente` de la cabecera solo informa de dónde salen los valores mostrados: PLC real con host e ID Modbus, o simulador local. No habilita tráfico ni cambia el modo de escritura.
 
 ## Inyección
 
@@ -92,6 +96,19 @@ curl http://localhost:<WEB_HOST_PORT>/api/health
 ```bash
 curl http://localhost:<WEB_HOST_PORT>/api/config
 ```
+
+### Control de lecturas Modbus
+
+La cabecera expone una tecla por función de lectura. El estado y el sample rate se guardan en `runtime/modbus_polling.json`, por lo que sobreviven a la recreación de contenedores mientras se conserve el volumen `runtime/`:
+
+```bash
+curl http://localhost:<WEB_HOST_PORT>/api/modbus-polling
+curl -X PUT http://localhost:<WEB_HOST_PORT>/api/modbus-polling/02 \
+  -H "Content-Type: application/json" \
+  -d '{"enabled":false,"sample_rate_ms":2000,"source":"operador"}'
+```
+
+FC01..FC04 gobiernan exclusivamente lecturas. Las escrituras de coils FC05 y registros FC06 continúan dependiendo de `runtime/write_mode.txt`.
 
 ### Modo de escritura persistente
 
@@ -184,7 +201,7 @@ Direcciones relevantes de inyección:
 ```text
 .env.example         Plantilla de parámetros runtime fijos.
 docker-compose.yml   Orquestación de servicios; carga .env y monta runtime/ local.
-runtime/             Estado local generado: write_mode.txt, logs y estado del emulador.
+runtime/             Estado local generado: write_mode.txt, modbus_polling.json, logs y estado del emulador.
 trasvase-tester/
   Dockerfile         Imagen del servicio web + master Modbus.
   app/               Paquete Python importable del servicio.

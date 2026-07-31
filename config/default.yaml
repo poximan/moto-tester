@@ -391,19 +391,19 @@ tables:
       tag: cB1Mr
       label: Comando bomba 1 marcha
       default: false
-    - row: 5
+    - row: 4
       tag: cB2Aut
       label: Comando bomba 2 automático
       default: false
-    - row: 6
+    - row: 5
       tag: cB2Mr
       label: Comando bomba 2 marcha
       default: false
-    - row: 9
+    - row: 8
       tag: cB3Aut
       label: Comando bomba 3 automático
       default: false
-    - row: 10
+    - row: 9
       tag: cB3Mr
       label: Comando bomba 3 marcha
       default: false

@@ -15,7 +15,16 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import AppConfig, load_config
 from .modbus_client import ModbusPoller, SimulationPoller
-from .models import CommandBody, EmulatorValveBody, FacadeBody, GenericWriteBody, PumpCommandBody, WriteModeBody
+from .models import (
+    CommandBody,
+    EmulatorValveBody,
+    FacadeBody,
+    GenericWriteBody,
+    PollingControlBody,
+    PumpCommandBody,
+    WriteModeBody,
+)
+from .polling_control import PollingControlStore
 from .state import RuntimeState
 from .write_mode import WriteModeStore
 from .logging_utils import configure_file_logger, log_dir, tail_file
@@ -26,7 +35,8 @@ LOGGER = configure_file_logger("trasvase.web", "trasvase-tester.log")
 
 config: AppConfig = load_config()
 write_mode = WriteModeStore()
-state = RuntimeState(config, write_mode)
+polling_control = PollingControlStore(default_sample_rate_ms=config.polling.interval_ms)
+state = RuntimeState(config, write_mode, polling_control)
 poller: ModbusPoller | SimulationPoller
 if config.runtime.simulation_mode:
     poller = SimulationPoller(config, state)
@@ -100,6 +110,7 @@ def health() -> dict[str, Any]:
         "mode": snap["connection"].get("mode"),
         "write_mode": snap["write_mode"].get("mode"),
         "write_enabled": snap["write_mode"].get("write_enabled"),
+        "modbus_polling": snap["modbus_polling"],
         "last_error": snap["connection"].get("last_error"),
     }
 
@@ -147,6 +158,7 @@ def api_config() -> dict[str, Any]:
         },
         "addressing_mode": config.addressing_mode,
         "write_mode": state.write_mode_snapshot(),
+        "modbus_polling": state.polling_control_snapshot(),
         "field_emulator_url": config.runtime.field_emulator_url,
         "tables": {
             name: {
@@ -197,6 +209,7 @@ def diagnostics() -> dict[str, Any]:
     return {
         "connection": snap["connection"],
         "write_mode": snap["write_mode"],
+        "modbus_polling": snap["modbus_polling"],
         "controller": snap["controller"],
         "log_dir": str(log_dir()),
         "events": snap["events"][:25],
@@ -249,6 +262,35 @@ def set_write_mode(body: WriteModeBody) -> dict[str, Any]:
     LOGGER.warning("write_mode request mode=%s source=%s", body.mode, body.source)
     try:
         snapshot = state.set_write_mode(body.mode, source=body.source)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"ok": True, **snapshot}
+
+
+@app.get("/api/modbus-polling")
+def get_modbus_polling() -> dict[str, Any]:
+    return state.polling_control_snapshot()
+
+
+@app.put("/api/modbus-polling/{function_code}")
+def set_modbus_polling(
+    function_code: str,
+    body: PollingControlBody,
+) -> dict[str, Any]:
+    LOGGER.info(
+        "polling control request fc=%s enabled=%s sample_rate_ms=%s source=%s",
+        function_code,
+        body.enabled,
+        body.sample_rate_ms,
+        body.source,
+    )
+    try:
+        snapshot = state.update_polling_control(
+            function_code,
+            enabled=body.enabled,
+            sample_rate_ms=body.sample_rate_ms,
+            source=body.source,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"ok": True, **snapshot}

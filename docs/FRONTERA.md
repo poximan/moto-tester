@@ -13,9 +13,13 @@ El tester lee y presenta las cuatro tablas SCA del intercambio de producción:
 
 En la UI, las cuatro tablas SCA muestran solo tags de producción. Se respetan las filas internas vacías del intercambio real, pero no se muestra la zona `y*` dentro de esas cuatro tablas.
 
+Las teclas FC01..FC04 de la cabecera gobiernan únicamente las lecturas. Cada una nace activa a 2000 ms y conserva su habilitación y período en `runtime/modbus_polling.json`. Las consultas se inician desfasadas y sus errores se registran por separado, de modo que una respuesta inválida no interrumpe las demás tablas. FC05/FC06 siguen gobernadas por el modo de escritura.
+
 ## Tráfico front-back
 
 La UI usa `ws://<host>/ws/stream` para recibir snapshots y estado del emulador. Las tablas se construyen una vez y luego solo se actualizan celdas de valor. Los controles de usuario —inputs analógicos, checkboxes de inyección digital, válvulas y botones de comando— no se reescriben por snapshot, para no pisar edición ni scroll.
+
+La cápsula `Fuente` identifica si los valores visibles provienen del PLC configurado —incluye host e ID— o del simulador local. Es información de procedencia; no es una llave operativa.
 
 ## Inyección
 

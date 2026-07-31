@@ -7,6 +7,7 @@ from threading import Lock
 from typing import Any, Literal
 
 from .config import AppConfig, Signal
+from .polling_control import PollingControlStore
 from .write_mode import WriteModeStore
 
 Quality = Literal["unknown", "good", "stale", "error", "local"]
@@ -47,9 +48,15 @@ class WriteRequest:
 
 
 class RuntimeState:
-    def __init__(self, config: AppConfig, write_mode: WriteModeStore):
+    def __init__(
+        self,
+        config: AppConfig,
+        write_mode: WriteModeStore,
+        polling_control: PollingControlStore,
+    ):
         self.config = config
         self.write_mode = write_mode
+        self.polling_control = polling_control
         self._lock = Lock()
         self._values: dict[str, SignalValue] = {
             tag: SignalValue(
@@ -206,6 +213,10 @@ class RuntimeState:
                 drained.append(self._write_queue.popleft())
         return drained
 
+    def has_pending_writes(self) -> bool:
+        with self._lock:
+            return bool(self._write_queue)
+
     def writes_enabled(self) -> bool:
         return self.write_mode.is_write_enabled()
 
@@ -218,6 +229,34 @@ class RuntimeState:
             "write_mode",
             f"Modo de escritura cambiado a {snapshot['mode']}",
             level="warning" if snapshot["write_enabled"] else "info",
+            source=source,
+        )
+        return snapshot
+
+    def polling_control_snapshot(self) -> dict[str, Any]:
+        return self.polling_control.snapshot()
+
+    def update_polling_control(
+        self,
+        function_code: str,
+        *,
+        enabled: bool | None = None,
+        sample_rate_ms: int | None = None,
+        source: str = "web",
+    ) -> dict[str, Any]:
+        snapshot = self.polling_control.update(
+            function_code,
+            enabled=enabled,
+            sample_rate_ms=sample_rate_ms,
+        )
+        self.add_event(
+            "polling_control",
+            (
+                f"FC{int(snapshot['function_code'])} "
+                f"{'activa' if snapshot['enabled'] else 'pausada'} "
+                f"cada {snapshot['sample_rate_ms']} ms"
+            ),
+            level="info" if snapshot["enabled"] else "warning",
             source=source,
         )
         return snapshot
@@ -251,11 +290,17 @@ class RuntimeState:
             events = list(self._events)[:100]
             local_commands = dict(self._local_commands)
 
+        polling_control = self.polling_control.snapshot()
         max_stale_s = self.config.polling.max_stale_ms / 1000.0
         for item in values.values():
             updated_at = item.get("updated_at")
             item["age_s"] = None if updated_at is None else round(now - updated_at, 3)
-            if updated_at and now - updated_at > max_stale_s and item.get("quality") == "good":
+            function_control = polling_control["functions"].get(item["function_code"], {})
+            signal_stale_s = max(
+                max_stale_s,
+                int(function_control.get("sample_rate_ms", 0)) / 1000.0 * 2,
+            )
+            if updated_at and now - updated_at > signal_stale_s and item.get("quality") == "good":
                 item["quality"] = "stale"
 
         write_mode = self.write_mode.snapshot()
@@ -265,6 +310,7 @@ class RuntimeState:
             "timestamp": now,
             "connection": connection,
             "write_mode": write_mode,
+            "modbus_polling": polling_control,
             "controller": {
                 "host": self.config.controller.host,
                 "port": self.config.controller.port,
