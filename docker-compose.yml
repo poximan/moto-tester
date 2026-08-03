@@ -1,5 +1,11 @@
 services:
   trasvase-tester:
+    pids_limit: 256
+    logging: &default-logging
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     image: moto-tester-trasvase-tester:1.0.0
     build:
       context: .
@@ -17,6 +23,8 @@ services:
       - edge
 
   field-emulator:
+    pids_limit: 256
+    logging: *default-logging
     image: moto-tester-field-emulator:1.0.0
     build:
       context: .

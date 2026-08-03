@@ -14,6 +14,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from .config import AppConfig, load_config
+from .control.snapshot_hub import SnapshotHub
 from .modbus_client import ModbusPoller, SimulationPoller
 from .models import (
     CommandBody,
@@ -84,15 +85,32 @@ def _emulator_state_safe() -> dict[str, Any]:
         return {"last_error": f"Servicio experto no disponible: {exc}"}
 
 
+async def _produce_stream_snapshot() -> dict[str, Any]:
+    emulator = await asyncio.to_thread(_emulator_state_safe)
+    return {
+        "type": "state",
+        "snapshot": state.snapshot(),
+        "emulator": emulator,
+    }
+
+
+snapshot_hub = SnapshotHub(
+    interval_s=max(config.polling.interval_ms / 1000.0, 0.2),
+    producer=_produce_stream_snapshot,
+)
+
+
 @app.on_event("startup")
-def on_startup() -> None:
+async def on_startup() -> None:
     LOGGER.info("startup web/modbus service")
     poller.start()
+    snapshot_hub.start()
 
 
 @app.on_event("shutdown")
-def on_shutdown() -> None:
+async def on_shutdown() -> None:
     LOGGER.info("shutdown web/modbus service")
+    await snapshot_hub.stop()
     poller.stop()
 
 
@@ -125,18 +143,11 @@ def snapshot() -> dict[str, Any]:
 @app.websocket("/ws/stream")
 async def websocket_stream(websocket: WebSocket) -> None:
     await websocket.accept()
-    interval_s = max(config.polling.interval_ms / 1000.0, 0.2)
+    revision = -1
     try:
         while True:
-            emulator = await asyncio.to_thread(_emulator_state_safe)
-            await websocket.send_json(
-                {
-                    "type": "state",
-                    "snapshot": state.snapshot(),
-                    "emulator": emulator,
-                }
-            )
-            await asyncio.sleep(interval_s)
+            revision, stream_snapshot = await snapshot_hub.wait_next(revision)
+            await websocket.send_json(stream_snapshot)
     except WebSocketDisconnect:
         return
 
