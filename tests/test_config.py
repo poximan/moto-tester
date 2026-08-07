@@ -125,6 +125,7 @@ def test_compose_uses_env_file_and_runtime_volume():
     assert "MODBUS_HOST" not in compose
     assert "PLC_WRITE_ENABLED" not in compose
     assert "SIMULATION_MODE" not in compose
+    assert "ports:" not in compose
 
 
 def test_no_run_scripts():
@@ -134,28 +135,56 @@ def test_no_run_scripts():
 
 def test_write_mode_file_is_created_read_only_by_default(tmp_path):
     mode_file = tmp_path / "runtime" / "write_mode.txt"
-    store = WriteModeStore(mode_file)
+    interlock_file = tmp_path / "runtime" / "write_interlock.txt"
+    store = WriteModeStore(
+        path=mode_file,
+        interlock_path=interlock_file,
+        lease_seconds=60,
+    )
 
     assert mode_file.exists()
+    assert interlock_file.read_text(encoding="utf-8").strip() == "disarmed"
     assert mode_file.read_text(encoding="utf-8").strip() == READ_ONLY
     assert store.snapshot()["mode"] == READ_ONLY
 
 
-def test_write_mode_store_persists_and_fails_closed(tmp_path):
+def test_write_mode_store_requires_interlock_and_lease(tmp_path):
     path = tmp_path / "write_mode.txt"
-    store = WriteModeStore(path)
+    interlock_path = tmp_path / "write_interlock.txt"
+    now = [100.0]
+    store = WriteModeStore(
+        path=path,
+        interlock_path=interlock_path,
+        lease_seconds=60,
+        monotonic_provider=lambda: now[0],
+    )
     assert store.snapshot()["mode"] == READ_ONLY
     assert store.snapshot()["write_enabled"] is False
 
+    try:
+        store.set_mode(WRITE_ENABLED)
+    except PermissionError:
+        pass
+    else:
+        raise AssertionError("Un interlock desarmado debe impedir la escritura")
+
+    interlock_path.write_text("armed\n", encoding="utf-8")
     store.set_mode(WRITE_ENABLED)
     assert path.read_text(encoding="utf-8").strip() == WRITE_ENABLED
     assert store.snapshot()["write_enabled"] is True
 
-    path.write_text("habilitado\n", encoding="utf-8")
+    now[0] += 61
     snap = store.snapshot()
     assert snap["mode"] == READ_ONLY
     assert snap["write_enabled"] is False
     assert snap["error"]
+
+    restarted = WriteModeStore(
+        path=path,
+        interlock_path=interlock_path,
+        lease_seconds=60,
+    )
+    assert restarted.snapshot()["mode"] == READ_ONLY
 
 
 def test_modbus_polling_defaults_and_persists_by_function_code(tmp_path):

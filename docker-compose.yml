@@ -13,8 +13,6 @@ services:
     container_name: moto-tester-trasvase-tester
     env_file:
       - .env
-    ports:
-      - "0.0.0.0:${WEB_HOST_PORT}:8080"
     volumes:
       - ./runtime:/app/runtime
     restart: unless-stopped

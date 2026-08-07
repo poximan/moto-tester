@@ -87,18 +87,18 @@
 - Limitar Compose a construccion y seleccion de imagen, publicacion de puertos, secretos y configuracion de despliegue, dependencias, redes, volumenes, recursos, reinicio y logging.
 - No duplicar en Compose un default ya definido en el Dockerfile. Usar command o healthcheck en Compose solamente para imagenes oficiales de terceros, tareas one-shot o overrides de despliegue explicitamente justificados.
 - No crear Dockerfiles vacios para renombrar imagenes oficiales de terceros. En esos casos conservar la imagen versionada del proveedor y usar un container_name con namespace del proyecto como excepcion documentada.
-- Ejecutar utilities/scripts/validate-docker-conventions.py despues de modificar Dockerfile, Compose, nombres de servicios o identidades de imagen.
+- Despues de modificar Dockerfile, Compose, nombres de servicios o identidades de imagen, verificar estaticamente que todas las referencias y convenciones relacionadas permanezcan consistentes.
 
 9. Gobierno de puertos TCP
 - Mantener ports.txt en la raiz del workspace como fuente de verdad de puertos publicados, internos, remotos y externos.
 - Mantener servicoop/platform/edge-platform/edge-gateway/config/routes.txt como fuente de verdad exclusiva del ruteo HTTP. No fusionarlo con ports.txt: uno decide host, path y destino; el otro registra contratos TCP.
-- Validar que cada destino de routes.txt corresponda a un servicio o alias Docker existente y a un service_port registrado, mediante utilities/scripts/validate-docker-conventions.py.
+- Validar estaticamente que cada destino de routes.txt corresponda a un servicio o alias Docker existente y a un service_port registrado.
 - Distinguir siempre host_port de service_port. Los puertos publicados en el host deben ser unicos en todo el workspace; los puertos internos pueden repetirse cuando pertenecen a redes aisladas.
 - Asignar un unico service_port canonico a componentes funcionalmente equivalentes, aunque pertenezcan a productos distintos. El puerto interno forma parte del contrato de la imagen y no debe variar mediante Compose.
 - Reservar 80 y 443 para la frontera publica central. Evitar publicar directamente servicios de dominio; acceder a ellos mediante el router de frontera o redes internas.
 - Asignar bandas estables por producto: 4000-4999 para se-chatgis, 5000-5999 para floral-resto, 6000-6099 para casa-miento-gb, 6100-6199 para espacio-nagare, 6200-6299 para reportespiolis, 6300-6399 para scadita-mb, 8000-8199 para comunic-mon, 8200-8299 para moto-tester y 8300-8399 para afondo-gim.
 - Vincular herramientas de desarrollo y diagnostico a localhost o 127.0.0.1 siempre que no deban aceptar conexiones remotas.
-- Al cambiar un puerto, actualizar en una misma modificacion ports.txt, Compose, variables de entorno, codigo, healthchecks y documentacion. Validar la configuracion renderizada de Compose y ejecutar utilities/scripts/validate-ports.py.
+- Al cambiar un puerto, actualizar en una misma modificacion ports.txt, Compose, variables de entorno, codigo, healthchecks y documentacion. Validar estaticamente la configuracion renderizada de Compose y su consistencia con ports.txt.
 - Antes de desplegar, comprobar que los puertos publicados esten libres en el sistema operativo. Una ocupacion debe producir un error visible; no seleccionar otro puerto de forma silenciosa.
 
 10. Gobierno de fecha y hora
@@ -115,7 +115,7 @@
 - Exigir que ambos miembros de cada par declaren exactamente las mismas claves. Los valores estables no sensibles pueden conservar el mismo default; los secretos y valores dependientes del entorno deben reemplazarse por placeholders inequívocos en la plantilla.
 - Mantener .env y local.properties fuera de Git mediante .gitignore. Mantener sus archivos .example sin ignorar y dentro del repositorio correspondiente.
 - No inventar fallbacks para compensar claves ausentes. La configuracion obligatoria debe fallar de forma visible y la plantilla debe documentar todo lo necesario para completar una instalacion.
-- Ejecutar utilities/scripts/validate-local-config.py despues de agregar, eliminar o renombrar variables, modificar Compose, cambiar configuracion movil o editar reglas de Git.
+- Despues de agregar, eliminar o renombrar variables, modificar Compose, cambiar configuracion movil o editar reglas de Git, verificar estaticamente que cada par de configuracion local y plantilla conserve exactamente las mismas claves y las reglas de exclusion requeridas.
 
 12. Patrones metodologicos
 - Arquitectura modular y separacion estricta de incumbencias.

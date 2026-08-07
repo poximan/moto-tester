@@ -100,6 +100,7 @@ class ValveBody(BaseModel):
 class FieldEmulator:
     def __init__(self) -> None:
         self.api_url = os.getenv("TESTER_API_URL", "http://trasvase-tester:8080").rstrip("/")
+        self.internal_token = os.environ["INTERNAL_EMULATOR_TOKEN"]
         self.interval_ms = _env_int("FIELD_EMULATOR_INTERVAL_MS", 1000)
         self.inlet_rate = _env_float("FIELD_EMULATOR_INLET_RATE_PER_S", 90.0)
         self.pump_rate = _env_float("FIELD_EMULATOR_PUMP_RATE_PER_S", 12.0)
@@ -241,7 +242,10 @@ class FieldEmulator:
             f"{self.api_url}{path}",
             data=data,
             method="POST",
-            headers={"Content-Type": "application/json"},
+            headers={
+                "Content-Type": "application/json",
+                "X-Internal-Emulator-Token": self.internal_token,
+            },
         )
         with urllib.request.urlopen(req, timeout=5) as response:  # noqa: S310
             return json.loads(response.read().decode("utf-8"))

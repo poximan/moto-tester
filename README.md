@@ -12,12 +12,12 @@ La solución contiene tres componentes dockerizados:
 
 Hay una separación estricta:
 
-- `.env`: **única fuente de verdad para configuración de despliegue**: PLC, puerto publicado en el host, polling, timeouts, modo simulación y parámetros del servicio experto.
-- `runtime/write_mode.txt`: **única fuente de verdad del modo de escritura**, persistente y editable como texto. Se crea automáticamente en `read_only` si no existe. Valores válidos: `read_only` o `write_enabled`.
+- `.env`: **única fuente de verdad para configuración de despliegue**: PLC, autenticación interna, interlock, polling, timeouts, modo simulación y parámetros del servicio experto.
+- `runtime/write_mode.txt`: estado efectivo del modo de escritura. Cada arranque lo fuerza a `read_only`; `write_enabled` sólo se admite con interlock local armado y lease vigente.
 - `runtime/modbus_polling.json`: control persistente e independiente de las lecturas FC01, FC02, FC03 y FC04. Todas nacen activas usando `POLL_INTERVAL_MS` —2000 ms en el `.env.example`—; la botonera de cabecera permite pausar cada una o cambiar su período sin afectar las escrituras FC05/FC06.
 - `config/default.yaml`: **solo mapa Modbus y estructura de señales**: tablas, tags, filas, tipos, marcas de inyección y, cuando SCA la informa, variable interna `mapped_value`.
 
-El `docker-compose.yml` se limita a la orquestación: carga `.env`, publica `WEB_HOST_PORT`, conecta redes y monta `./runtime`. Los puertos internos `8080` y `8090`, los hosts de escucha, los comandos y el healthcheck pertenecen a sus Dockerfiles. La carpeta `runtime/` es local y generada; no forma parte de la imagen ni del repositorio. El código rechaza `server`, `controller`, `polling`, `safety` o `runtime` dentro de `config/default.yaml`.
+El `docker-compose.yml` se limita a la orquestación: carga `.env`, conecta redes y monta `./runtime`. El servicio web no publica puertos del host y sólo se alcanza mediante `edge-gateway`. Los puertos internos `8080` y `8090`, los hosts de escucha, los comandos y el healthcheck pertenecen a sus Dockerfiles. La carpeta `runtime/` es local y generada; no forma parte de la imagen ni del repositorio. El código rechaza `server`, `controller`, `polling`, `safety` o `runtime` dentro de `config/default.yaml`.
 
 ## Etapa 1: observación
 
@@ -57,10 +57,10 @@ Editar `.env` y luego ejecutar:
 docker compose up --build
 ```
 
-Abrir la URL formada con `WEB_HOST_PORT` definido en `.env`, por defecto:
+Abrir la URL pública del gateway e iniciar el modo protegido:
 
 ```text
-http://localhost:8200
+https://comunicaciones.servicoop.com.ar/moto-tester/
 ```
 
 No hay scripts `run.sh` ni `run.bat`; la entrada operativa estándar es Docker Compose. En la raíz solo queda `docker-compose.yml` como archivo Docker; los Dockerfile están dentro de la carpeta del servicio que construyen: `trasvase-tester/Dockerfile` y `field-emulator/Dockerfile`.
@@ -76,25 +76,25 @@ Cambiar `SIMULATION_MODE` en `.env` y levantar nuevamente el servicio.
 REST sigue disponible para diagnóstico puntual:
 
 ```bash
-curl http://localhost:<WEB_HOST_PORT>/api/snapshot
+curl https://comunicaciones.servicoop.com.ar/moto-tester/api/snapshot
 ```
 
 La UI usa WebSocket para tráfico continuo y no hace refresh periódico del snapshot:
 
 ```text
-ws://localhost:<WEB_HOST_PORT>/ws/stream
+wss://comunicaciones.servicoop.com.ar/moto-tester/ws/stream
 ```
 
 ### Salud
 
 ```bash
-curl http://localhost:<WEB_HOST_PORT>/api/health
+curl https://comunicaciones.servicoop.com.ar/moto-tester/api/health
 ```
 
 ### Configuración y mapa calculado
 
 ```bash
-curl http://localhost:<WEB_HOST_PORT>/api/config
+curl https://comunicaciones.servicoop.com.ar/moto-tester/api/config
 ```
 
 ### Control de lecturas Modbus
@@ -102,22 +102,24 @@ curl http://localhost:<WEB_HOST_PORT>/api/config
 La cabecera expone una tecla por función de lectura. El estado y el sample rate se guardan en `runtime/modbus_polling.json`, por lo que sobreviven a la recreación de contenedores mientras se conserve el volumen `runtime/`:
 
 ```bash
-curl http://localhost:<WEB_HOST_PORT>/api/modbus-polling
-curl -X PUT http://localhost:<WEB_HOST_PORT>/api/modbus-polling/02 \
+curl https://comunicaciones.servicoop.com.ar/moto-tester/api/modbus-polling
+curl -X PUT https://comunicaciones.servicoop.com.ar/moto-tester/api/modbus-polling/02 \
   -H "Content-Type: application/json" \
   -d '{"enabled":false,"sample_rate_ms":2000,"source":"operador"}'
 ```
 
 FC01..FC04 gobiernan exclusivamente lecturas. Las escrituras de coils FC05 y registros FC06 continúan dependiendo de `runtime/write_mode.txt`.
 
-### Modo de escritura persistente
+### Modo de escritura temporal con interlock
+
+Antes de habilitar escritura, un operador con acceso al volumen local debe escribir exactamente `armed` en `runtime/write_interlock.txt`. La API requiere la sesión protegida del gateway y la habilitación vence luego de `WRITE_ENABLE_LEASE_SECONDS` (900 segundos en el ejemplo).
 
 ```bash
-curl http://localhost:<WEB_HOST_PORT>/api/write-mode
+curl https://comunicaciones.servicoop.com.ar/moto-tester/api/write-mode
 ```
 
 ```bash
-curl -X PUT http://localhost:<WEB_HOST_PORT>/api/write-mode \
+curl -X PUT https://comunicaciones.servicoop.com.ar/moto-tester/api/write-mode \
   -H "Content-Type: application/json" \
   -d '{"mode":"write_enabled","source":"operador"}'
 ```
@@ -125,7 +127,7 @@ curl -X PUT http://localhost:<WEB_HOST_PORT>/api/write-mode \
 Para volver al modo seguro:
 
 ```bash
-curl -X PUT http://localhost:<WEB_HOST_PORT>/api/write-mode \
+curl -X PUT https://comunicaciones.servicoop.com.ar/moto-tester/api/write-mode \
   -H "Content-Type: application/json" \
   -d '{"mode":"read_only","source":"operador"}'
 ```
@@ -136,11 +138,11 @@ curl -X PUT http://localhost:<WEB_HOST_PORT>/api/write-mode \
 La web proxya el servicio experto por estos endpoints:
 
 ```bash
-curl http://localhost:<WEB_HOST_PORT>/api/emulator/state
+curl https://comunicaciones.servicoop.com.ar/moto-tester/api/emulator/state
 ```
 
 ```bash
-curl -X PUT http://localhost:<WEB_HOST_PORT>/api/emulator/valves \
+curl -X PUT https://comunicaciones.servicoop.com.ar/moto-tester/api/emulator/valves \
   -H "Content-Type: application/json" \
   -d '{"inlet_open_pct":60,"outlet_open_pct":25}'
 ```
@@ -157,7 +159,7 @@ El servicio experto no tiene una llave propia de habilitación: calcula siempre,
 En etapa 1 queda local y no escribe al PLC mientras `runtime/write_mode.txt` esté en `read_only`:
 
 ```bash
-curl -X POST http://localhost:<WEB_HOST_PORT>/api/pumps/1/command \
+curl -X POST https://comunicaciones.servicoop.com.ar/moto-tester/api/pumps/1/command \
   -H "Content-Type: application/json" \
   -d '{"aut":true,"mr":true,"source":"web"}'
 ```
@@ -165,7 +167,7 @@ curl -X POST http://localhost:<WEB_HOST_PORT>/api/pumps/1/command \
 ### Comando directo real por tag
 
 ```bash
-curl -X POST http://localhost:<WEB_HOST_PORT>/api/command \
+curl -X POST https://comunicaciones.servicoop.com.ar/moto-tester/api/command \
   -H "Content-Type: application/json" \
   -d '{"tag":"cB1Mr","value":true,"source":"curl"}'
 ```
@@ -175,7 +177,7 @@ curl -X POST http://localhost:<WEB_HOST_PORT>/api/command \
 Requiere `runtime/write_mode.txt = write_enabled`. Con `read_only`, los pedidos se registran como locales y no se escriben al PLC. Las posiciones `y*` son solo entradas de inyección; para el estado visible del proceso se usan `eNvCamAsp`, `eNvRes` y el resto de `e*`/`b*`.
 
 ```bash
-curl -X POST http://localhost:<WEB_HOST_PORT>/api/injection \
+curl -X POST https://comunicaciones.servicoop.com.ar/moto-tester/api/injection \
   -H "Content-Type: application/json" \
   -d '{"values":{"yNvCamAsp":2500,"yB1EMar":true},"source":"scada-test"}'
 ```
@@ -230,11 +232,11 @@ tests/
 
 ## Seguridad operativa
 
-- Si `runtime/write_mode.txt` no existe, la aplicación lo crea en `read_only`.
-- Hay una sola llave persistente de escritura: `runtime/write_mode.txt`.
-- `read_only`: no escribe al PLC; refleja el pedido localmente para prueba de UI/API.
-- `write_enabled`: permite escribir todos los tags marcados como `writable: true`, incluyendo `cB#*` y `y*`.
-- El modo puede consultarse con `GET /api/write-mode` y cambiarse con `PUT /api/write-mode`; el cambio queda persistido en el archivo de texto.
+- El contenedor siempre inicia en `read_only`, incluso si el archivo persistido tenía otro valor.
+- Para habilitar escritura deben coincidir tres controles: sesión protegida válida, `runtime/write_interlock.txt = armed` y lease vigente.
+- El lease vence automáticamente y cualquier interlock ausente, inválido o desarmado produce cierre en `read_only`.
+- Las llamadas internas del `field-emulator` usan un token propio; no pueden habilitar el modo de escritura ni modificar otros controles.
+- Los lotes se validan completos —tags, permisos, tipos, rangos y capacidad— antes de encolar, evitando escrituras parciales.
 - Las peticiones de comando se registran en eventos para trazabilidad.
 - Los errores de lectura marcan calidad `error`; si la señal queda vieja, se marca `stale` en el snapshot.
 
@@ -251,10 +253,10 @@ La animación de bomba destella verde/azul cuando el arranque y la marcha no coi
 Los logs persistentes se escriben en `runtime/logs/` y se pueden consultar desde la web en la sección **Diagnóstico y logs** o por API:
 
 ```bash
-curl http://localhost:<WEB_HOST_PORT>/api/logs
-curl "http://localhost:<WEB_HOST_PORT>/api/logs/trasvase-tester?lines=300"
-curl "http://localhost:<WEB_HOST_PORT>/api/logs/field-emulator?lines=300"
-curl http://localhost:<WEB_HOST_PORT>/api/diagnostics
+curl https://comunicaciones.servicoop.com.ar/moto-tester/api/logs
+curl "https://comunicaciones.servicoop.com.ar/moto-tester/api/logs/trasvase-tester?lines=300"
+curl "https://comunicaciones.servicoop.com.ar/moto-tester/api/logs/field-emulator?lines=300"
+curl https://comunicaciones.servicoop.com.ar/moto-tester/api/diagnostics
 ```
 
 Archivos principales:
@@ -263,39 +265,9 @@ Archivos principales:
 - `runtime/logs/field-emulator.log`: servicio experto de emulación, válvulas y escrituras de `yNvCamAsp` / `yNvRes`.
 
 
-## Acceso desde otra máquina de la LAN
+## Acceso
 
-El servidor web escucha dentro del contenedor en `WEB_HOST=0.0.0.0` y Docker publica el puerto explícitamente en todas las interfaces del host:
-
-```yaml
-ports:
-  - "0.0.0.0:${WEB_HOST_PORT}:8080"
-```
-
-Para entrar desde otra máquina, usar la IP LAN del host donde corre Docker, no `localhost`:
-
-```text
-http://<IP_LAN_DEL_HOST_DOCKER>:8200
-```
-
-Chequeos rápidos en el host Docker:
-
-```bash
-docker compose ps
-curl http://127.0.0.1:<WEB_HOST_PORT>/api/health
-```
-
-Verificar escucha del puerto:
-
-```bash
-ss -lntp | grep <WEB_HOST_PORT>
-# o
-netstat -ano | findstr :<WEB_HOST_PORT>
-```
-
-Si localmente responde pero desde otra PC no, el problema normalmente está fuera de la app: firewall del host, perfil de red privado/público en Windows, UFW/firewalld en Linux, Docker Desktop/WSL2 o segmentación/VLAN de la red.
-
-
+`trasvase-tester` sólo expone el puerto interno `8080` en `servicoop-edge-net`. No existe binding al host ni acceso LAN directo. Todo acceso de operador entra por `https://comunicaciones.servicoop.com.ar/moto-tester/`, donde `edge-gateway` valida la sesión protegida. Los endpoints mutables vuelven a verificar esa sesión en el servicio.
 ## Orden de arranque y error `Connection refused` del emulador
 
 El `field-emulator` consume la API interna del servicio web en `http://trasvase-tester:8080`. Si el emulador arranca antes de que Uvicorn esté aceptando conexiones, aparece un error transitorio:
@@ -312,7 +284,7 @@ Si vuelve a aparecer, revisar:
 docker compose ps
 docker logs trasvase-tester --tail=100
 docker logs field-emulator --tail=100
-curl http://127.0.0.1:<WEB_HOST_PORT>/api/health
+docker compose exec trasvase-tester python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/health', timeout=2)"
 ```
 
 El resultado `queued=True, written=False` en `/api/injection` solo significa que la escritura fue aceptada y encolada por el servicio web. La confirmación Modbus real aparece después en `runtime/logs/trasvase-tester.log` como `write_ok` o `write_error`.

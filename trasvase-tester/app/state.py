@@ -150,61 +150,98 @@ class RuntimeState:
                     item.updated_at = now
                     item.error = error
 
-    def enqueue_write(self, tag: str, value: bool | int, source: str = "web") -> dict[str, Any]:
+    def _validate_write(self, tag: str, value: Any) -> bool | int:
         signal = self.config.signals_by_tag.get(tag)
         if signal is None:
             raise KeyError(f"Tag no definido: {tag}")
         if not signal.writable:
             raise PermissionError(f"El tag {tag} no está marcado como escribible")
 
+        if signal.effective_write_kind == "coil":
+            if isinstance(value, bool):
+                return value
+            if isinstance(value, int) and value in {0, 1}:
+                return bool(value)
+            raise ValueError(f"El tag {tag} requiere un booleano o 0/1")
+
+        if signal.effective_write_kind == "holding_register":
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise ValueError(f"El tag {tag} requiere un entero")
+            if signal.data_type == "int16" and not -32768 <= value <= 32767:
+                raise ValueError(f"El tag {tag} excede el rango int16")
+            if signal.data_type != "int16" and not 0 <= value <= 65535:
+                raise ValueError(f"El tag {tag} excede el rango uint16")
+            return value
+
+        raise ValueError(f"El tag {tag} no tiene un tipo de escritura soportado")
+
+    def enqueue_writes(
+        self,
+        values: dict[str, Any],
+        source: str = "web",
+    ) -> dict[str, dict[str, Any]]:
+        validated = {tag: self._validate_write(tag, value) for tag, value in values.items()}
+        if not validated:
+            raise ValueError("No se informaron escrituras")
+
         now = time.time()
+        mode_snapshot = self.write_mode.snapshot()
         with self._lock:
-            self._local_commands[tag] = {"value": value, "source": source, "created_at": now}
-            mode_snapshot = self.write_mode.snapshot()
+            results: dict[str, dict[str, Any]] = {}
             if not bool(mode_snapshot["write_enabled"]):
-                # Etapa read_only: registrar pedido y reflejarlo como valor local para feedback de UI.
-                if tag in self._values:
+                for tag, value in validated.items():
+                    self._local_commands[tag] = {"value": value, "source": source, "created_at": now}
                     item = self._values[tag]
                     item.value = value
                     item.quality = "local"
                     item.updated_at = now
                     item.error = f"write_mode={mode_snapshot['mode']}: comando no escrito en PLC"
-                self._events.appendleft(
-                    {
-                        "ts": now,
-                        "type": "command_local",
-                        "level": "warning",
-                        "message": f"Comando {tag}={value} registrado localmente; modo {mode_snapshot['mode']}",
-                        "tag": tag,
-                        "value": value,
-                        "source": source,
+                    self._events.appendleft(
+                        {
+                            "ts": now,
+                            "type": "command_local",
+                            "level": "warning",
+                            "message": f"Comando {tag}={value} registrado localmente; modo {mode_snapshot['mode']}",
+                            "tag": tag,
+                            "value": value,
+                            "source": source,
+                        }
+                    )
+                    results[tag] = {
+                        "queued": False,
+                        "written": False,
+                        "reason": f"write_mode={mode_snapshot['mode']}",
                     }
-                )
-                return {"queued": False, "written": False, "reason": f"write_mode={mode_snapshot['mode']}"}
+                return results
 
-            request = WriteRequest(tag=tag, value=value, source=source, created_at=now)
-            self._write_queue.append(request)
-            # Eco local inmediato: evita que la UI y el emulador queden un ciclo
-            # atrasados mientras el poller procesa la escritura Modbus. La
-            # confirmación real reemplaza esta marca con quality=good/error.
-            if tag in self._values:
+            queue_capacity = self._write_queue.maxlen or 0
+            if len(self._write_queue) + len(validated) > queue_capacity:
+                raise BufferError("Cola de escrituras completa; no se encolo ningun comando")
+
+            for tag, value in validated.items():
+                self._local_commands[tag] = {"value": value, "source": source, "created_at": now}
+                self._write_queue.append(WriteRequest(tag=tag, value=value, source=source, created_at=now))
                 item = self._values[tag]
                 item.value = value
                 item.quality = "local"
                 item.updated_at = now
                 item.error = "write queued"
-            self._events.appendleft(
-                {
-                    "ts": now,
-                    "type": "command_queued",
-                    "level": "info",
-                    "message": f"Comando {tag}={value} encolado para escritura PLC",
-                    "tag": tag,
-                    "value": value,
-                    "source": source,
-                }
-            )
-            return {"queued": True, "written": False}
+                self._events.appendleft(
+                    {
+                        "ts": now,
+                        "type": "command_queued",
+                        "level": "info",
+                        "message": f"Comando {tag}={value} encolado para escritura PLC",
+                        "tag": tag,
+                        "value": value,
+                        "source": source,
+                    }
+                )
+                results[tag] = {"queued": True, "written": False}
+            return results
+
+    def enqueue_write(self, tag: str, value: Any, source: str = "web") -> dict[str, Any]:
+        return self.enqueue_writes({tag: value}, source=source)[tag]
 
     def drain_writes(self, limit: int = 50) -> list[WriteRequest]:
         drained: list[WriteRequest] = []

@@ -8,12 +8,13 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from .config import AppConfig, load_config
+from .auth import RequestAuthenticator
 from .control.snapshot_hub import SnapshotHub
 from .modbus_client import ModbusPoller, SimulationPoller
 from .models import (
@@ -35,7 +36,14 @@ STATIC_DIR = APP_DIR / "static"
 LOGGER = configure_file_logger("trasvase.web", "trasvase-tester.log")
 
 config: AppConfig = load_config()
-write_mode = WriteModeStore()
+write_mode = WriteModeStore(
+    interlock_path=config.runtime.write_interlock_file,
+    lease_seconds=config.runtime.write_enable_lease_seconds,
+)
+request_authenticator = RequestAuthenticator(
+    config.runtime.edge_auth_verify_url,
+    config.runtime.internal_emulator_token,
+)
 polling_control = PollingControlStore(default_sample_rate_ms=config.polling.interval_ms)
 state = RuntimeState(config, write_mode, polling_control)
 poller: ModbusPoller | SimulationPoller
@@ -59,6 +67,14 @@ app.add_middleware(
 )
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+def require_operator(request: Request) -> None:
+    request_authenticator.require_operator(request)
+
+
+def require_operator_or_emulator(request: Request) -> None:
+    request_authenticator.require_operator_or_emulator(request)
 
 
 def _emulator_request(method: str, path: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -269,10 +285,15 @@ def get_write_mode() -> dict[str, Any]:
 
 
 @app.put("/api/write-mode")
-def set_write_mode(body: WriteModeBody) -> dict[str, Any]:
+def set_write_mode(
+    body: WriteModeBody,
+    _authorized: None = Depends(require_operator),
+) -> dict[str, Any]:
     LOGGER.warning("write_mode request mode=%s source=%s", body.mode, body.source)
     try:
         snapshot = state.set_write_mode(body.mode, source=body.source)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"ok": True, **snapshot}
@@ -287,6 +308,7 @@ def get_modbus_polling() -> dict[str, Any]:
 def set_modbus_polling(
     function_code: str,
     body: PollingControlBody,
+    _authorized: None = Depends(require_operator),
 ) -> dict[str, Any]:
     LOGGER.info(
         "polling control request fc=%s enabled=%s sample_rate_ms=%s source=%s",
@@ -308,36 +330,52 @@ def set_modbus_polling(
 
 
 @app.post("/api/command")
-def command(body: CommandBody) -> dict[str, Any]:
+def command(
+    body: CommandBody,
+    _authorized: None = Depends(require_operator),
+) -> dict[str, Any]:
     signal = config.signals_by_tag.get(body.tag)
     if signal is None:
         raise HTTPException(status_code=404, detail=f"Tag no definido: {body.tag}")
     if signal.table != "digital_commands" or signal.facade:
         raise HTTPException(status_code=400, detail="Este endpoint solo acepta comandos digitales reales cB#")
     try:
-        result = state.enqueue_write(body.tag, bool(body.value), source=body.source)
+        result = state.enqueue_write(body.tag, body.value, source=body.source)
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
-    return {"ok": True, "tag": body.tag, "value": bool(body.value), **result}
+    except (BufferError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"ok": True, "tag": body.tag, "value": body.value, **result}
 
 
 @app.post("/api/pumps/{pump_id}/command")
-def pump_command(pump_id: int, body: PumpCommandBody) -> dict[str, Any]:
+def pump_command(
+    pump_id: int,
+    body: PumpCommandBody,
+    _authorized: None = Depends(require_operator),
+) -> dict[str, Any]:
     LOGGER.info("pump command pump=%s aut=%s mr=%s source=%s", pump_id, body.aut, body.mr, body.source)
     if pump_id < 1 or pump_id > 5:
         raise HTTPException(status_code=404, detail="pump_id debe estar entre 1 y 5")
-    results: dict[str, Any] = {}
+    requested: dict[str, bool] = {}
     if body.aut is not None:
-        tag = f"cB{pump_id}Aut"
-        results[tag] = state.enqueue_write(tag, bool(body.aut), source=body.source)
+        requested[f"cB{pump_id}Aut"] = bool(body.aut)
     if body.mr is not None:
-        tag = f"cB{pump_id}Mr"
-        results[tag] = state.enqueue_write(tag, bool(body.mr), source=body.source)
+        requested[f"cB{pump_id}Mr"] = bool(body.mr)
+    try:
+        results = state.enqueue_writes(requested, source=body.source)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except (BufferError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return {"ok": True, "pump_id": pump_id, "results": results}
 
 
 @app.post("/api/write")
-def generic_write(body: GenericWriteBody) -> dict[str, Any]:
+def generic_write(
+    body: GenericWriteBody,
+    _authorized: None = Depends(require_operator),
+) -> dict[str, Any]:
     signal = config.signals_by_tag.get(body.tag)
     if signal is None:
         raise HTTPException(status_code=404, detail=f"Tag no definido: {body.tag}")
@@ -347,26 +385,42 @@ def generic_write(body: GenericWriteBody) -> dict[str, Any]:
         result = state.enqueue_write(body.tag, body.value, source=body.source)
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except (BufferError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return {"ok": True, "tag": body.tag, "value": body.value, **result}
 
 
-@app.post("/api/injection")
-def injection(body: FacadeBody) -> dict[str, Any]:
+def _apply_injection(body: FacadeBody) -> dict[str, Any]:
     LOGGER.info("injection request source=%s values=%s", body.source, body.values)
-    written: dict[str, Any] = {}
-    for tag, value in body.values.items():
+    for tag in body.values:
         signal = config.signals_by_tag.get(tag)
         if signal is None:
             raise HTTPException(status_code=404, detail=f"Tag de inyección no definido: {tag}")
         if not signal.writable or not signal.facade:
             raise HTTPException(status_code=403, detail=f"{tag} no pertenece a inyección escribible")
-        written[tag] = state.enqueue_write(tag, value, source=body.source)
+    try:
+        written = state.enqueue_writes(body.values, source=body.source)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except (BufferError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return {"ok": True, "results": written}
 
 
+@app.post("/api/injection")
+def injection(
+    body: FacadeBody,
+    _authorized: None = Depends(require_operator_or_emulator),
+) -> dict[str, Any]:
+    return _apply_injection(body)
+
+
 @app.post("/api/facade")
-def facade_compat(body: FacadeBody) -> dict[str, Any]:
-    return injection(body)
+def facade_compat(
+    body: FacadeBody,
+    _authorized: None = Depends(require_operator_or_emulator),
+) -> dict[str, Any]:
+    return _apply_injection(body)
 
 
 @app.get("/api/emulator/state")
@@ -375,6 +429,9 @@ def emulator_state() -> dict[str, Any]:
 
 
 @app.put("/api/emulator/valves")
-def emulator_valves(body: EmulatorValveBody) -> dict[str, Any]:
+def emulator_valves(
+    body: EmulatorValveBody,
+    _authorized: None = Depends(require_operator),
+) -> dict[str, Any]:
     payload = {k: v for k, v in body.model_dump().items() if v is not None}
     return _emulator_request("PUT", "/valves", payload)

@@ -39,7 +39,7 @@ Ubicación vigente de inyección:
 
 ## Escritura
 
-La llave única de escritura real es `runtime/write_mode.txt`:
+La escritura real requiere sesión protegida, interlock local armado y un lease temporal. `runtime/write_mode.txt` refleja el estado efectivo:
 
 ```text
 read_only
@@ -51,7 +51,7 @@ No escribe al PLC. Registra el pedido localmente para prueba de UI/API.
 write_enabled
 ```
 
-Permite escribir tags marcados como `writable: true`: comandos reales `cB#*` e inyecciones `y*`.
+Permite escribir tags marcados como `writable: true`: comandos reales `cB#*` e inyecciones `y*`, sólo hasta el vencimiento del lease. Cada arranque, interlock inválido o desarmado fuerza `read_only`.
 
 
 ## Servicio experto de emulación
@@ -69,10 +69,10 @@ La lectura digital oficial de cada bomba conserva `bB#InE` e incluye `bB#Arndo` 
 Los logs persistentes se escriben en `runtime/logs/` y se pueden consultar desde la web en la sección **Diagnóstico y logs** o por API:
 
 ```bash
-curl http://localhost:8200/api/logs
-curl "http://localhost:8200/api/logs/trasvase-tester?lines=300"
-curl "http://localhost:8200/api/logs/field-emulator?lines=300"
-curl http://localhost:8200/api/diagnostics
+curl https://comunicaciones.servicoop.com.ar/moto-tester/api/logs
+curl "https://comunicaciones.servicoop.com.ar/moto-tester/api/logs/trasvase-tester?lines=300"
+curl "https://comunicaciones.servicoop.com.ar/moto-tester/api/logs/field-emulator?lines=300"
+curl https://comunicaciones.servicoop.com.ar/moto-tester/api/diagnostics
 ```
 
 Archivos principales:
