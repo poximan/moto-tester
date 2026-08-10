@@ -1,0 +1,2 @@
+.editor { display: inline-flex; align-items: center; gap: var(--sc-space-2); }
+.editor input { width: 7rem; }

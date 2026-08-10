@@ -1,6 +1,6 @@
 export type SignalScalar = boolean | number | string | null;
 export type SignalQuality = "unknown" | "good" | "stale" | "error" | "local";
-export type WriteModeName = "read_only" | "write_enabled";
+export type InjectionModeName = "disabled" | "enabled";
 
 export interface ProjectDefinition {
   name: string;
@@ -62,10 +62,10 @@ export interface PollingState {
   functions: Record<string, PollingFunction>;
 }
 
-export interface WriteModeState {
-  mode: WriteModeName;
-  write_enabled: boolean;
-  file?: string;
+export interface InjectionModeState {
+  mode: InjectionModeName;
+  enabled: boolean;
+  path: string;
   error?: string | null;
 }
 
@@ -93,7 +93,7 @@ export interface RuntimeSnapshot {
   project: ProjectDefinition;
   timestamp: number;
   connection: ConnectionState;
-  write_mode: WriteModeState;
+  injection_mode: InjectionModeState;
   modbus_polling: PollingState;
   controller: { host: string; port: number; unit_id: number };
   values: Record<string, SignalValue>;
@@ -106,7 +106,7 @@ export interface TesterConfig {
   controller: { host: string; port: number; unit_id: number; timeout_s: number };
   polling: { interval_ms: number; max_stale_ms: number };
   addressing_mode: string;
-  write_mode: WriteModeState;
+  injection_mode: InjectionModeState;
   modbus_polling: PollingState;
   field_emulator_url: string;
   tables: Record<string, TableDefinition>;
@@ -118,7 +118,8 @@ export interface EmulatorState {
   yNvCamAsp?: number;
   yNvRes?: number;
   pump_count?: number;
-  write_enabled?: boolean;
+  injection_enabled?: boolean;
+  generate_emar?: Record<string, boolean>;
   last_error?: string;
   bounds?: {
     yNvCamAsp?: { floor: number; ceiling: number };

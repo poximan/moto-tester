@@ -62,3 +62,7 @@ class PollingControlBody(BaseModel):
 class EmulatorValveBody(BaseModel):
     inlet_open_pct: float | None = Field(default=None, ge=0, le=100)
     outlet_open_pct: float | None = Field(default=None, ge=0, le=100)
+
+
+class EmulatorPumpEmarBody(BaseModel):
+    enabled: bool

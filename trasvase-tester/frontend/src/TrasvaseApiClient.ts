@@ -5,7 +5,7 @@ import type {
   LogIndex,
   RuntimeSnapshot,
   TesterConfig,
-  WriteModeName,
+  InjectionModeName,
 } from "./TrasvaseModels";
 
 export class TrasvaseApiClient {
@@ -50,8 +50,8 @@ export class TrasvaseApiClient {
     return payload as Record<string, unknown>;
   }
 
-  public setWriteMode(mode: WriteModeName): Promise<unknown> {
-    return this.sendJson("api/write-mode", "PUT", { mode, source: "web" });
+  public setInjectionMode(mode: InjectionModeName): Promise<unknown> {
+    return this.sendJson("api/injection-mode", "PUT", { mode, source: "web" });
   }
 
   public setPolling(functionCode: string, values: { enabled?: boolean; sample_rate_ms?: number }): Promise<unknown> {
@@ -66,11 +66,19 @@ export class TrasvaseApiClient {
     return this.sendJson("api/injection", "POST", { values: { [tag]: value }, source });
   }
 
+  public write(tag: string, value: boolean | number, source = "web"): Promise<unknown> {
+    return this.sendJson("api/write", "POST", { tag, value, source });
+  }
+
   public async setValves(inlet: number, outlet: number): Promise<EmulatorState> {
     return this.parser.parseEmulator(await this.sendJson("api/emulator/valves", "PUT", {
       inlet_open_pct: inlet,
       outlet_open_pct: outlet,
     }));
+  }
+
+  public async setGenerateEmar(pump: number, enabled: boolean): Promise<EmulatorState> {
+    return this.parser.parseEmulator(await this.sendJson(`api/emulator/pumps/${pump}/generate-emar`, "PUT", { enabled }));
   }
 
   private async getJson(relativePath: string, signal?: AbortSignal): Promise<unknown> {

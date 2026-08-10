@@ -18,6 +18,7 @@ from .control.snapshot_hub import SnapshotHub
 from .modbus_client import ModbusPoller, SimulationPoller
 from .models import (
     CommandBody,
+    EmulatorPumpEmarBody,
     EmulatorValveBody,
     FacadeBody,
     GenericWriteBody,
@@ -35,9 +36,7 @@ FRONTEND_DIR = APP_DIR.parent / "frontend"
 LOGGER = configure_file_logger("trasvase.web", "trasvase-tester.log")
 
 config: AppConfig = load_config()
-injection_mode = InjectionModeStore(
-    lease_seconds=config.runtime.injection_enable_lease_seconds,
-)
+injection_mode = InjectionModeStore()
 request_authenticator = RequestAuthenticator(
     config.runtime.edge_auth_verify_url,
     config.runtime.internal_emulator_token,
@@ -423,6 +422,15 @@ def emulator_valves(
 ) -> dict[str, Any]:
     payload = {k: v for k, v in body.model_dump().items() if v is not None}
     return _emulator_request("PUT", "/valves", payload)
+
+
+@app.put("/api/emulator/pumps/{pump_id}/generate-emar")
+def emulator_generate_emar(
+    pump_id: int,
+    body: EmulatorPumpEmarBody,
+    _authorized: None = Depends(require_operator),
+) -> dict[str, Any]:
+    return _emulator_request("PUT", f"/pumps/{pump_id}/generate-emar", body.model_dump())
 
 
 app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")

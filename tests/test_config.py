@@ -7,8 +7,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "trasvase-tester"))
 
 from app.config import load_config
+from app.injection_mode import DISABLED, ENABLED, InjectionModeStore
 from app.polling_control import PollingControlStore
-from app.write_mode import READ_ONLY, WRITE_ENABLED, WriteModeStore
+from app.state import RuntimeState
 
 
 RUNTIME_SECTIONS = {"server", "controller", "polling", "safety", "runtime"}
@@ -110,12 +111,13 @@ def test_yaml_has_no_runtime_parameters():
     assert not (RUNTIME_SECTIONS & set(raw))
 
 
-def test_env_example_has_no_write_mode_or_write_enable_flags():
+def test_env_example_has_no_global_or_temporal_write_flags():
     env = Path(".env.example").read_text(encoding="utf-8")
     assert "PLC_WRITE_ENABLED" not in env
     assert "ALLOW_REGISTER_WRITES" not in env
     assert "ALLOW_FACADE_WRITES" not in env
     assert "WRITE_MODE" not in env
+    assert "INJECTION_ENABLE_LEASE_SECONDS" not in env
 
 
 def test_compose_uses_env_file_and_runtime_volume():
@@ -134,44 +136,54 @@ def test_no_run_scripts():
     assert not Path("run.bat").exists()
 
 
-def test_write_mode_file_is_created_read_only_by_default(tmp_path):
-    mode_file = tmp_path / "runtime" / "write_mode.txt"
-    store = WriteModeStore(
-        path=mode_file,
-        lease_seconds=60,
-    )
+def test_injection_mode_file_is_created_disabled_by_default(tmp_path):
+    mode_file = tmp_path / "runtime" / "injection_mode.txt"
+    store = InjectionModeStore(path=mode_file)
 
     assert mode_file.exists()
-    assert mode_file.read_text(encoding="utf-8").strip() == READ_ONLY
-    assert store.snapshot()["mode"] == READ_ONLY
+    assert mode_file.read_text(encoding="utf-8").strip() == DISABLED
+    assert store.snapshot()["mode"] == DISABLED
 
 
-def test_write_mode_store_requires_a_valid_lease(tmp_path):
-    path = tmp_path / "write_mode.txt"
-    now = [100.0]
-    store = WriteModeStore(
-        path=path,
-        lease_seconds=60,
-        monotonic_provider=lambda: now[0],
-    )
-    assert store.snapshot()["mode"] == READ_ONLY
-    assert store.snapshot()["write_enabled"] is False
+def test_injection_mode_store_remembers_the_last_value_after_restart(tmp_path):
+    path = tmp_path / "injection_mode.txt"
+    store = InjectionModeStore(path=path)
+    assert store.snapshot()["mode"] == DISABLED
+    assert store.snapshot()["enabled"] is False
 
-    store.set_mode(WRITE_ENABLED)
-    assert path.read_text(encoding="utf-8").strip() == WRITE_ENABLED
-    assert store.snapshot()["write_enabled"] is True
+    store.set_mode(ENABLED)
+    assert path.read_text(encoding="utf-8").strip() == ENABLED
+    assert store.snapshot()["enabled"] is True
 
-    now[0] += 61
-    snap = store.snapshot()
-    assert snap["mode"] == READ_ONLY
-    assert snap["write_enabled"] is False
-    assert snap["error"]
+    restarted_enabled = InjectionModeStore(path=path)
+    assert restarted_enabled.snapshot()["mode"] == ENABLED
+    assert restarted_enabled.snapshot()["enabled"] is True
 
-    restarted = WriteModeStore(
-        path=path,
-        lease_seconds=60,
-    )
-    assert restarted.snapshot()["mode"] == READ_ONLY
+    restarted_enabled.set_mode(DISABLED)
+    restarted_disabled = InjectionModeStore(path=path)
+    assert restarted_disabled.snapshot()["mode"] == DISABLED
+    assert restarted_disabled.snapshot()["enabled"] is False
+
+
+def test_only_y_tags_depend_on_injection_mode(tmp_path):
+    cfg = load_config("config/default.yaml")
+    injection_mode = InjectionModeStore(path=tmp_path / "injection_mode.txt")
+    polling = PollingControlStore(tmp_path / "modbus_polling.json")
+    state = RuntimeState(cfg, injection_mode, polling)
+
+    for function_code in ("01", "02", "03", "04"):
+        polling.update(function_code, enabled=False)
+
+    assert cfg.signals_by_tag["gResSp"].writable is True
+    assert state.enqueue_write("gResSp", 5000)["queued"] is True
+    assert state.enqueue_write("cB1Aut", True)["queued"] is True
+
+    disabled = state.enqueue_injections({"yNvRes": 3200})["yNvRes"]
+    assert disabled["queued"] is False
+    assert disabled["reason"] == "injection_mode=disabled"
+
+    injection_mode.set_mode(ENABLED)
+    assert state.enqueue_injections({"yNvRes": 3200})["yNvRes"]["queued"] is True
 
 
 def test_modbus_polling_defaults_and_persists_by_function_code(tmp_path):
@@ -356,12 +368,20 @@ def test_pump_assets_are_packaged():
     assert (asset_dir / "pump_green.png").exists()
 
 
-def test_write_mode_is_controlled_from_the_react_status_header():
+def test_injection_mode_is_controlled_from_the_react_status_header():
     app = (SERVICE_FRONTEND / "src/App.tsx").read_text(encoding="utf-8")
     header = (SERVICE_FRONTEND / "src/components/StatusHeader.tsx").read_text(encoding="utf-8")
     assert "mode-card" not in app
-    assert "setWriteMode" in app
-    assert "snapshot.write_mode.mode" in header
+    assert "setInjectionMode" in app
+    assert "snapshot.injection_mode.enabled" in header
+
+
+def test_g_setpoints_are_always_editable_from_react():
+    source = (SERVICE_FRONTEND / "src/components/ProductionTables.tsx").read_text(encoding="utf-8")
+    client = (SERVICE_FRONTEND / "src/TrasvaseApiClient.ts").read_text(encoding="utf-8")
+    assert 'signal.tag.startsWith("g") && signal.writable' in source
+    assert "SetpointEditor" in source
+    assert '"api/write"' in client
 
 
 def test_front_uses_websocket_stream_and_does_not_poll_refresh_snapshot():
@@ -406,12 +426,15 @@ def test_modbus_points_match_ace3600_formula_ranges():
 
 def test_pump_cards_include_arr_emar_generation_and_specific_pills():
     pump = (SERVICE_FRONTEND / "src/components/PumpCard.tsx").read_text(encoding="utf-8")
+    client = (SERVICE_FRONTEND / "src/TrasvaseApiClient.ts").read_text(encoding="utf-8")
+    emulator = Path("field-emulator/field_emulator/main.py").read_text(encoding="utf-8")
     header = (SERVICE_FRONTEND / "src/components/StatusHeader.tsx").read_text(encoding="utf-8")
 
     assert "bB1Arndo" in Path("config/default.yaml").read_text(encoding="utf-8")
     assert "generar EMar" in pump
-    assert "web-generar-emar" in pump
-    assert "pump.arr" in pump
+    assert "localStorage" not in pump
+    assert "setGenerateEmar" in client
+    assert 'values.get(f"bB{pump_id}Arndo")' in emulator
     assert "Fuente: PLC" in header
     assert "RTU (0)" not in pump
     assert "Tablero (1)" not in pump

@@ -13,7 +13,7 @@ export class TrasvaseContractParser {
     this.requireProject(record.project, "config.project");
     this.requireRecord(record.controller, "config.controller");
     this.requireRecord(record.polling, "config.polling");
-    this.requireRecord(record.write_mode, "config.write_mode");
+    this.requireRecord(record.injection_mode, "config.injection_mode");
     this.requirePolling(record.modbus_polling, "config.modbus_polling");
     const tables = this.requireRecord(record.tables, "config.tables");
     for (const [name, value] of Object.entries(tables)) {
@@ -35,7 +35,7 @@ export class TrasvaseContractParser {
     this.requireProject(record.project, "snapshot.project");
     this.requireNumber(record, "timestamp", "snapshot");
     this.requireRecord(record.connection, "snapshot.connection");
-    this.requireRecord(record.write_mode, "snapshot.write_mode");
+    this.requireRecord(record.injection_mode, "snapshot.injection_mode");
     this.requirePolling(record.modbus_polling, "snapshot.modbus_polling");
     const values = this.requireRecord(record.values, "snapshot.values");
     for (const [tag, value] of Object.entries(values)) {

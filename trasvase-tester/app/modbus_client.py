@@ -318,15 +318,6 @@ class ModbusPoller:
     def _process_writes(self) -> None:
         if not self.state.has_pending_writes():
             return
-        if not self.state.writes_enabled():
-            for request in self.state.drain_writes():
-                self.state.write_result(
-                    request.tag,
-                    request.value,
-                    ok=False,
-                    error="write_mode=read_only",
-                )
-            return
         if self._client is None:
             self._ensure_client()
         for request in self.state.drain_writes():
@@ -440,14 +431,10 @@ class SimulationPoller:
                     updates[tag] = signal.default
             self.state.update_values(updates, quality="good")
 
-            # En simulación no hay cliente Modbus que confirme la escritura.
-            # Si el modo operativo está en write_enabled, aplicamos la cola sobre
-            # el espejo local para que el emulador de campo pueda escribir
-            # yNvCamAsp/yNvRes con el mismo comportamiento observable que tendría
-            # una confirmación de escritura del PLC.
-            if self.state.writes_enabled():
-                for request in self.state.drain_writes():
-                    self.state.write_result(request.tag, request.value, ok=True)
+            # En simulacion no hay cliente Modbus que confirme la escritura.
+            # La cola ya contiene solamente operaciones autorizadas por el dominio.
+            for request in self.state.drain_writes():
+                self.state.write_result(request.tag, request.value, ok=True)
 
             self.state.update_connection(connected=True, last_error=None)
             self.state.mark_poll_success()

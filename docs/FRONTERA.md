@@ -13,7 +13,7 @@ El tester lee y presenta las cuatro tablas SCA del intercambio de producción:
 
 En la UI, las cuatro tablas SCA muestran solo tags de producción. Se respetan las filas internas vacías del intercambio real, pero no se muestra la zona `y*` dentro de esas cuatro tablas.
 
-Las teclas FC01..FC04 de la cabecera gobiernan únicamente las lecturas. Cada una nace activa a 2000 ms y conserva su habilitación y período en `runtime/modbus_polling.json`. Las consultas se inician desfasadas y sus errores se registran por separado, de modo que una respuesta inválida no interrumpe las demás tablas. FC05/FC06 siguen gobernadas por el modo de escritura.
+Las teclas FC01..FC04 de la cabecera gobiernan únicamente las lecturas y la actualización de pantalla. Cada una nace activa a 2000 ms y conserva su habilitación y período en `runtime/modbus_polling.json`. Las consultas se inician desfasadas y sus errores se registran por separado, de modo que una respuesta inválida no interrumpe las demás tablas. Las escrituras FC05/FC06 son independientes: `g*` y `c*` se escriben siempre, mientras que sólo `y*` depende del modo de inyección.
 
 ## Tráfico front-back
 
@@ -37,21 +37,23 @@ Ubicación vigente de inyección:
 - Consignas analógicas: último valor real fila `21`; filas `22..26` libres; `yNvCamAsp` inicia en fila `27`, ref `42076`; `yB5Hs` termina en fila `34`, ref `42083`.
 - Comandos digitales: último valor real fila `17`; filas `18..22` libres; `yRFF` inicia en fila `23`, ref `6168`; `yB5Falla` termina en fila `42`, ref `6187`.
 
-## Escritura
+## Escritura e inyección
 
-La escritura real requiere sesión protegida y un lease temporal. `runtime/write_mode.txt` refleja el estado efectivo:
+Las consignas `g*` y los comandos `c*` enviados por un operador autenticado se encolan siempre para escritura al PLC. No dependen del polling FC01..FC04 ni de una habilitación adicional.
 
-```text
-read_only
-```
-
-No escribe al PLC. Registra el pedido localmente para prueba de UI/API.
+El modo persistente gobierna exclusivamente las inyecciones `y*`. `runtime/injection_mode.txt` conserva el último estado elegido a través de sesiones web y reinicios:
 
 ```text
-write_enabled
+disabled
 ```
 
-Permite escribir tags marcados como `writable: true`: comandos reales `cB#*` e inyecciones `y*`, sólo hasta el vencimiento del lease. Cada arranque fuerza `read_only` y el operador autenticado puede habilitarlo nuevamente desde la interfaz web.
+Omite las inyecciones `y*`. No altera la posibilidad de escribir `g*` o `c*`.
+
+```text
+enabled
+```
+
+Permite escribir exclusivamente los tags de inyección `y*`. El estado no vence ni se reinicia automáticamente; permanece `enabled` hasta que un operador autenticado seleccione `disabled` desde la interfaz web.
 
 
 ## Servicio experto de emulación
@@ -61,7 +63,7 @@ El contenedor `field-emulator` escribe inicialmente `yNvCamAsp` y `yNvRes` usand
 
 ## `bB#Arndo` y generación opcional de `yB#EMar`
 
-La lectura digital oficial de cada bomba conserva `bB#InE` e incluye `bB#Arndo` al final del paquete. El check web `generar EMar` no reemplaza el feedback: solo automatiza la escritura de `yB#EMar` hacia el controlador siguiendo `bB#Arndo`. El estado visible de proceso sigue saliendo de `bB#EMar` y del resto de lecturas genuinas.
+La lectura digital oficial de cada bomba conserva `bB#InE` e incluye `bB#Arndo` al final del paquete. El check web `generar EMar` modifica una preferencia central del `field-emulator`, persistida en `runtime/field_emulator_state.json` y compartida por WebSocket con todos los clientes. El navegador no conserva ni ejecuta esta decisión. El servicio automatiza la escritura de `yB#EMar` hacia el controlador siguiendo `bB#Arndo`; el estado visible de proceso sigue saliendo de `bB#EMar` y del resto de lecturas genuinas.
 
 
 ## Logs

@@ -33,9 +33,9 @@ export function ProcessPanel({ emulator, onValves, presenter, snapshot }: Proces
   return (
     <Card>
       <div className={styles.heading}>
-        <div><h2>Emulador de campo</h2><p>Las válvulas escriben setpoints; los niveles usan feedback del intercambio real.</p></div>
-        <StatusBadge tone={emulator.last_error ? "danger" : emulator.write_enabled === false ? "warning" : "success"}>
-          {emulator.last_error ? "Emulador con error" : emulator.write_enabled === false ? "Emulador read_only" : "Emulador disponible"}
+        <div><h2>Emulador de campo</h2><p>Las válvulas gobiernan inyecciones y*; los niveles usan feedback del intercambio real.</p></div>
+        <StatusBadge tone={emulator.last_error ? "danger" : emulator.injection_enabled === false ? "warning" : "success"}>
+          {emulator.last_error ? "Emulador con error" : emulator.injection_enabled === false ? "Inyección y* deshabilitada" : "Inyección y* habilitada"}
         </StatusBadge>
       </div>
       <div className={styles.process}>

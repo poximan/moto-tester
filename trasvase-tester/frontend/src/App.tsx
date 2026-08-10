@@ -26,17 +26,22 @@ export function App() {
             <StatusHeader
               config={config}
               onPolling={async (code, values) => { await execute(() => client.setPolling(code, values)); }}
-              onWriteMode={async () => {
-                const next = snapshot.write_mode.mode === "write_enabled" ? "read_only" : "write_enabled";
-                await execute(() => client.setWriteMode(next));
+              onInjectionMode={async () => {
+                const next = snapshot.injection_mode.enabled ? "disabled" : "enabled";
+                await execute(() => client.setInjectionMode(next));
               }}
               snapshot={snapshot}
               streamState={streamState}
             />
             <MetricGrid presenter={presenter} snapshot={snapshot} />
             {emulator && <ProcessPanel emulator={emulator} onValves={async (inlet, outlet) => { await execute(() => client.setValves(inlet, outlet)); }} presenter={presenter} snapshot={snapshot} />}
-            <PumpGrid client={client} execute={execute} presenter={presenter} snapshot={snapshot} />
-            <ProductionTables config={config} presenter={presenter} snapshot={snapshot} />
+            <PumpGrid client={client} emulator={emulator} execute={execute} presenter={presenter} snapshot={snapshot} />
+            <ProductionTables
+              config={config}
+              onSetpoint={async (tag, value) => { await execute(() => client.write(tag, value)); }}
+              presenter={presenter}
+              snapshot={snapshot}
+            />
             <InjectionPanel client={client} config={config} execute={execute} presenter={presenter} snapshot={snapshot} />
             {logs && <LogsPanel client={client} logs={logs} />}
           </>

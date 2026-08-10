@@ -5,7 +5,7 @@ Tester de frontera para sistema de control de bombas de trasvase 4+1.
 La solución contiene tres componentes dockerizados:
 
 1. **Servidor web**: dashboard para visualizar señales del intercambio, estado de bombas, comandos y dos tablas de inyección.
-2. **Master Modbus/TCP**: cliente que consulta al PLC esclavo Modbus/TCP y, cuando se habilita explícitamente, escribe comandos/inyección. Corre dentro del servicio web en esta entrega.
+2. **Master Modbus/TCP**: cliente que consulta al PLC esclavo Modbus/TCP, escribe siempre las consignas `g*` y comandos `c*` solicitados por un operador autenticado, y condiciona únicamente las inyecciones `y*`. Corre dentro del servicio web en esta entrega.
 3. **Servicio experto de emulación de campo**: contenedor separado que calcula y escribe `yNvCamAsp` y `yNvRes` a partir de válvulas regulables, niveles límite y bombas en marcha.
 
 ## Fuente de verdad de configuración
@@ -13,7 +13,7 @@ La solución contiene tres componentes dockerizados:
 Hay una separación estricta:
 
 - `.env`: **única fuente de verdad para configuración de despliegue**: PLC, autenticación interna, polling, timeouts, modo simulación y parámetros del servicio experto.
-- `runtime/write_mode.txt`: estado efectivo del modo de escritura. Cada arranque lo fuerza a `read_only`; `write_enabled` sólo se admite con sesión protegida y lease vigente.
+- `runtime/injection_mode.txt`: última habilitación elegida para las inyecciones `y*`. El valor `enabled` o `disabled` sobrevive a recargas, nuevas sesiones web y reinicios del servicio hasta que un operador autenticado lo cambie. No condiciona consignas `g*` ni comandos `c*`.
 - `runtime/modbus_polling.json`: control persistente e independiente de las lecturas FC01, FC02, FC03 y FC04. Todas nacen activas usando `POLL_INTERVAL_MS` —2000 ms en el `.env.example`—; la botonera de cabecera permite pausar cada una o cambiar su período sin afectar las escrituras FC05/FC06.
 - `config/default.yaml`: **solo mapa Modbus y estructura de señales**: tablas, tags, filas, tipos, marcas de inyección y, cuando SCA la informa, variable interna `mapped_value`.
 
@@ -28,9 +28,9 @@ Modo equivalente a conectar un SCADA de lectura:
 - Lee entradas digitales reales `14097..14173` con FC02. Conserva `bB#InE` e incluye `bB#Arndo` al final de cada paquete de bomba.
 - Lee comandos digitales reales `6145..6162` con FC01. La zona `y*` no se lee; solo se escribe para inyección y empieza en fila 23.
 - Las cuatro lecturas se planifican por separado y con inicio desfasado para no concentrar una ráfaga sobre el controlador. Un error de una FC queda aislado y no descarta las lecturas correctas de las demás.
-- La web permite generar comandos. Con `runtime/write_mode.txt = read_only` solo los registra localmente; con `write_enabled` se escriben al PLC. Las cuatro tablas SCA visibles muestran exclusivamente tags de producción, con filas internas vacías para respetar la distribución real. La zona `y*` no aparece en estas cuatro tablas; queda en las dos tablas de inyección. La actualización de estado en la web llega por WebSocket (`/ws/stream`) y se aplica incrementalmente sobre celdas ya existentes; no hay polling `fetch` periódico del snapshot ni reconstrucción de tablas durante el ciclo de actualización.
+- La web permite editar consignas `g*` y generar comandos `c*`; ambos se encolan siempre para escritura al PLC. Las cuatro tablas SCA visibles muestran exclusivamente tags de producción, con filas internas vacías para respetar la distribución real. La zona `y*` no aparece en estas cuatro tablas; queda en las dos tablas de inyección y es la única sujeta a `runtime/injection_mode.txt`. La actualización de estado en la web llega por WebSocket (`/ws/stream`) y se aplica incrementalmente sobre celdas ya existentes; no hay polling `fetch` periódico del snapshot ni reconstrucción de tablas durante el ciclo de actualización.
 
-La cápsula `Fuente` de la cabecera solo informa de dónde salen los valores mostrados: PLC real con host e ID Modbus, o simulador local. No habilita tráfico ni cambia el modo de escritura.
+La cápsula `Fuente` de la cabecera solo informa de dónde salen los valores mostrados: PLC real con host e ID Modbus, o simulador local. No habilita tráfico ni cambia el modo de inyección.
 
 ## Inyección
 
@@ -108,28 +108,28 @@ curl -X PUT https://comunicaciones.servicoop.com.ar/moto-tester/api/modbus-polli
   -d '{"enabled":false,"sample_rate_ms":2000,"source":"operador"}'
 ```
 
-FC01..FC04 gobiernan exclusivamente lecturas. Las escrituras de coils FC05 y registros FC06 continúan dependiendo de `runtime/write_mode.txt`.
+FC01..FC04 gobiernan exclusivamente lecturas y actualización de pantalla. Pausar cualquiera o todas esas funciones no bloquea las escrituras FC05/FC06. Las consignas `g*` y los comandos `c*` se escriben siempre; sólo las inyecciones `y*` dependen de `runtime/injection_mode.txt`.
 
-### Modo de escritura temporal
+### Modo temporal de inyección `y*`
 
-La API requiere la sesión protegida del gateway y la habilitación vence luego de `WRITE_ENABLE_LEASE_SECONDS` (900 segundos en el ejemplo). No existe un interlock basado en archivos: el operador autenticado habilita o deshabilita la escritura desde la interfaz web.
+La API requiere la sesión protegida del gateway. La selección se guarda en `runtime/injection_mode.txt`, no vence y afecta exclusivamente los tags `y*` enviados por el emulador o la tabla de inyección. No existe una llave global de escritura.
 
 ```bash
-curl https://comunicaciones.servicoop.com.ar/moto-tester/api/write-mode
+curl https://comunicaciones.servicoop.com.ar/moto-tester/api/injection-mode
 ```
 
 ```bash
-curl -X PUT https://comunicaciones.servicoop.com.ar/moto-tester/api/write-mode \
+curl -X PUT https://comunicaciones.servicoop.com.ar/moto-tester/api/injection-mode \
   -H "Content-Type: application/json" \
-  -d '{"mode":"write_enabled","source":"operador"}'
+  -d '{"mode":"enabled","source":"operador"}'
 ```
 
 Para volver al modo seguro:
 
 ```bash
-curl -X PUT https://comunicaciones.servicoop.com.ar/moto-tester/api/write-mode \
+curl -X PUT https://comunicaciones.servicoop.com.ar/moto-tester/api/injection-mode \
   -H "Content-Type: application/json" \
-  -d '{"mode":"read_only","source":"operador"}'
+  -d '{"mode":"disabled","source":"operador"}'
 ```
 
 
@@ -147,7 +147,7 @@ curl -X PUT https://comunicaciones.servicoop.com.ar/moto-tester/api/emulator/val
   -d '{"inlet_open_pct":60,"outlet_open_pct":25}'
 ```
 
-El servicio experto no tiene una llave propia de habilitación: calcula siempre, pero solo escribe efectivamente cuando el modo superior está en `write_enabled`. Modelo inicial implementado:
+El servicio experto calcula siempre, pero sólo envía efectivamente los tags `y*` cuando `injection_mode` está en `enabled`. Modelo inicial implementado:
 
 - `yNvCamAsp` se incrementa por la válvula de ingreso y se decrementa por bombas en marcha.
 - `yNvRes` se incrementa por bombas en marcha y se decrementa por la válvula de salida. La escala por defecto de salida es proporcional: con 3 bombas en marcha y la válvula de reserva al 50%, el caudal de salida empata el caudal que entra a reserva. Con menos bombas o menor apertura la reserva sube; con más bombas o mayor apertura baja según la diferencia neta.
@@ -156,7 +156,7 @@ El servicio experto no tiene una llave propia de habilitación: calcula siempre,
 
 ### Comando de bomba
 
-En etapa 1 queda local y no escribe al PLC mientras `runtime/write_mode.txt` esté en `read_only`:
+Los comandos `cB#*` se encolan siempre para escritura al PLC y no dependen del modo de inyección ni del estado de FC01..FC04:
 
 ```bash
 curl -X POST https://comunicaciones.servicoop.com.ar/moto-tester/api/pumps/1/command \
@@ -174,7 +174,7 @@ curl -X POST https://comunicaciones.servicoop.com.ar/moto-tester/api/command \
 
 ### Inyección SCADA por tag `y*`
 
-Requiere `runtime/write_mode.txt = write_enabled`. Con `read_only`, los pedidos se registran como locales y no se escriben al PLC. Las posiciones `y*` son solo entradas de inyección; para el estado visible del proceso se usan `eNvCamAsp`, `eNvRes` y el resto de `e*`/`b*`.
+Requiere `runtime/injection_mode.txt = enabled`. Con `disabled`, los pedidos se registran como omitidos y no se escriben al PLC. Las posiciones `y*` son sólo entradas de inyección; para el estado visible del proceso se usan `eNvCamAsp`, `eNvRes` y el resto de `e*`/`b*`.
 
 ```bash
 curl -X POST https://comunicaciones.servicoop.com.ar/moto-tester/api/injection \
@@ -203,7 +203,7 @@ Direcciones relevantes de inyección:
 ```text
 .env.example         Plantilla de parámetros runtime fijos.
 docker-compose.yml   Orquestación de servicios; carga .env y monta runtime/ local.
-runtime/             Estado local generado: write_mode.txt, modbus_polling.json, logs y estado del emulador.
+runtime/             Estado local generado: injection_mode.txt, modbus_polling.json, logs y estado del emulador.
 trasvase-tester/
   Dockerfile         Imagen del servicio web + master Modbus.
   app/               Paquete Python importable del servicio.
@@ -212,7 +212,7 @@ trasvase-tester/
     config.py        Carga de .env + mapa Modbus; valida separación de responsabilidades.
     addressing.py    Conversión Modicon <-> PDU.
     state.py         Estado runtime, snapshots, cola de escritura.
-    write_mode.py    Lectura/escritura persistente de runtime/write_mode.txt.
+    injection_mode.py Habilitación temporal exclusiva de y*.
   frontend/          React + TypeScript estricto + Vite.
     src/             Contratos, clientes y componentes de dominio.
     public/assets/   PNGs de bombas por estado.
@@ -243,10 +243,10 @@ la imagen final recibe únicamente los archivos estáticos resultantes.
 
 ## Seguridad operativa
 
-- El contenedor siempre inicia en `read_only`, incluso si el archivo persistido tenía otro valor.
-- Para habilitar escritura deben coincidir dos controles: sesión protegida válida y lease vigente.
-- El lease vence automáticamente y produce cierre en `read_only`.
-- Las llamadas internas del `field-emulator` usan un token propio; no pueden habilitar el modo de escritura ni modificar otros controles.
+- El primer arranque crea `runtime/injection_mode.txt` en `disabled`; los siguientes conservan exactamente el último valor elegido.
+- Las consignas `g*` y los comandos `c*` autenticados permanecen escribibles independientemente de ese modo.
+- Sólo una sesión protegida válida puede cambiar el modo de inyección; el valor no vence y permanece hasta el próximo cambio explícito.
+- Las llamadas internas del `field-emulator` usan un token propio; no pueden habilitar el modo de inyección ni modificar otros controles.
 - Los lotes se validan completos —tags, permisos, tipos, rangos y capacidad— antes de encolar, evitando escrituras parciales.
 - Las peticiones de comando se registran en eventos para trazabilidad.
 - Los errores de lectura marcan calidad `error`; si la señal queda vieja, se marca `stale` en el snapshot.
@@ -254,7 +254,7 @@ la imagen final recibe únicamente los archivos estáticos resultantes.
 
 ## Generación asistida de EMar
 
-En cada card de bomba existe un check `generar EMar`. Cuando está activo, el front escribe `yB#EMar` siguiendo el bit real `bB#Arndo`: si `bB#Arndo=1` escribe `yB#EMar=1`; si `bB#Arndo=0` escribe `yB#EMar=0`. Si el check está desactivado, no toca `yB#EMar`.
+En cada card de bomba existe un check `generar EMar`. Su estado pertenece al `field-emulator`, se persiste en `runtime/field_emulator_state.json` y se distribuye a todos los clientes por WebSocket; el navegador no usa `localStorage` ni ejecuta esa automatización. Cuando está activo, el servicio escribe `yB#EMar` siguiendo el bit real `bB#Arndo`: si `bB#Arndo=1` escribe `yB#EMar=1`; si `bB#Arndo=0` escribe `yB#EMar=0`. Si el check está desactivado, no toca `yB#EMar`.
 
 La animación de bomba destella verde/azul cuando el arranque y la marcha no coinciden: `bB#Arndo=1` con `bB#EMar=0`, o `bB#Arndo=0` con `bB#EMar=1`. La jerarquía de colores se mantiene: sin conexión gris, falla roja, transición verde/azul, marcha verde, parada azul.
 

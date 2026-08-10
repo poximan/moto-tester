@@ -2,17 +2,19 @@ import { Card, StatusBadge } from "@servicoop/frontend-foundation";
 
 import { TrasvasePresenter } from "../TrasvasePresenter";
 import type { RuntimeSnapshot, TableDefinition, TesterConfig } from "../TrasvaseModels";
+import { SetpointEditor } from "./SetpointEditor";
 import styles from "./ProductionTables.module.css";
 
 export const TABLE_ORDER = ["analog_reads", "analog_setpoints", "digital_reads", "digital_commands"] as const;
 
 export interface ProductionTablesProps {
   config: TesterConfig;
+  onSetpoint: (tag: string, value: number) => Promise<void>;
   presenter: TrasvasePresenter;
   snapshot: RuntimeSnapshot;
 }
 
-export function ProductionTables({ config, presenter, snapshot }: ProductionTablesProps) {
+export function ProductionTables({ config, onSetpoint, presenter, snapshot }: ProductionTablesProps) {
   const rows = (table: TableDefinition) => {
     const signals = table.signals.filter((signal) => !signal.facade);
     const byRow = new Map(signals.map((signal) => [signal.row, signal]));
@@ -39,7 +41,16 @@ export function ProductionTables({ config, presenter, snapshot }: ProductionTabl
                     return (
                       <tr className={signal ? undefined : styles.empty} key={row}>
                         <td>{row}</td><td title={signal?.label}>{signal?.tag}</td>
-                        <td>{signal && <><strong>{presenter.signalText(value)}</strong> <StatusBadge tone={presenter.qualityTone(value)}>{value?.quality ?? "unknown"}</StatusBadge></>}</td>
+                        <td>{signal && <>
+                          <span className={styles.value}><strong>{presenter.signalText(value)}</strong> <StatusBadge tone={presenter.qualityTone(value)}>{value?.quality ?? "unknown"}</StatusBadge></span>
+                          {signal.tag.startsWith("g") && signal.writable && (
+                            <SetpointEditor
+                              onApply={(next) => onSetpoint(signal.tag, next)}
+                              tag={signal.tag}
+                              value={typeof value?.value === "number" ? value.value : null}
+                            />
+                          )}
+                        </>}</td>
                       </tr>
                     );
                   })}</tbody>

@@ -160,7 +160,6 @@ class RuntimeConfig:
     field_emulator_url: str
     edge_auth_verify_url: str
     internal_emulator_token: str
-    injection_enable_lease_seconds: int
 
 
 @dataclass(frozen=True)
@@ -256,10 +255,7 @@ def load_config(path: str | Path | None = None) -> AppConfig:
         field_emulator_url=_env_required("FIELD_EMULATOR_URL"),
         edge_auth_verify_url=_env_required("EDGE_AUTH_VERIFY_URL"),
         internal_emulator_token=_env_required("INTERNAL_EMULATOR_TOKEN"),
-        injection_enable_lease_seconds=_env_int("INJECTION_ENABLE_LEASE_SECONDS"),
     )
-    if runtime.injection_enable_lease_seconds < 60:
-        raise ValueError("INJECTION_ENABLE_LEASE_SECONDS debe ser al menos 60")
 
     tables: dict[str, TableDefinition] = {}
     signals_by_tag: dict[str, Signal] = {}

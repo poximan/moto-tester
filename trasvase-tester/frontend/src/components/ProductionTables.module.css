@@ -11,5 +11,6 @@
 .scroll th, .scroll td { padding: var(--sc-space-2) var(--sc-space-3); border-bottom: 1px solid var(--sc-color-border); }
 .scroll td:first-child { width: 4rem; color: var(--sc-color-text-muted); font-family: var(--sc-font-mono); }
 .scroll td:last-child { display: flex; justify-content: space-between; align-items: center; gap: var(--sc-space-2); font-family: var(--sc-font-mono); }
+.value { display: inline-flex; align-items: center; gap: var(--sc-space-2); }
 .empty { opacity: .25; }
 @media (max-width: 65rem) { .grid { grid-template-columns: 1fr; } }

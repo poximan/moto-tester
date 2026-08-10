@@ -8,12 +8,12 @@ import styles from "./StatusHeader.module.css";
 export interface StatusHeaderProps {
   config: TesterConfig;
   onPolling: (functionCode: string, values: { enabled?: boolean; sample_rate_ms?: number }) => Promise<void>;
-  onWriteMode: () => Promise<void>;
+  onInjectionMode: () => Promise<void>;
   snapshot: RuntimeSnapshot;
   streamState: StreamState;
 }
 
-export function StatusHeader({ config, onPolling, onWriteMode, snapshot, streamState }: StatusHeaderProps) {
+export function StatusHeader({ config, onInjectionMode, onPolling, snapshot, streamState }: StatusHeaderProps) {
   const source = snapshot.connection.mode === "simulation"
     ? "Fuente: simulador"
     : `Fuente: PLC ${snapshot.controller.host} · ID ${snapshot.controller.unit_id}`;
@@ -31,8 +31,8 @@ export function StatusHeader({ config, onPolling, onWriteMode, snapshot, streamS
           </StatusBadge>
           <StatusBadge tone={streamState === "connected" ? "success" : "warning"}>WEB {streamState}</StatusBadge>
           <StatusBadge tone={snapshot.connection.mode === "simulation" ? "warning" : "info"}>{source}</StatusBadge>
-          <Button onClick={() => void onWriteMode()} variant={snapshot.write_mode.write_enabled ? "primary" : "secondary"}>
-            {snapshot.write_mode.mode}
+          <Button onClick={() => void onInjectionMode()} variant={snapshot.injection_mode.enabled ? "primary" : "secondary"}>
+            Inyección y*: {snapshot.injection_mode.enabled ? "habilitada" : "deshabilitada"}
           </Button>
         </div>
       </div>

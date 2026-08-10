@@ -16,17 +16,19 @@ def test_inlet_valve_writes_yNvCamAsp_and_outlet_valve_writes_yNvRes(monkeypatch
     emu.state["outlet_open_pct"] = 100
     emu.state["yNvCamAsp"] = 1000
     emu.state["yNvRes"] = 3000
+    emu.state["generate_emar"]["1"] = True
     emu._last_tick = time.time() - 1.0
 
     snap = {
         "timestamp": 1,
-        "write_mode": {"write_enabled": True},
+        "injection_mode": {"enabled": True},
         "values": {
             "gCamFn": {"value": 0},
             "gCamRb": {"value": 4000},
             "gResFn": {"value": -1},
             "gResSp": {"value": 6000},
             "bB1EMar": {"value": False},
+            "bB1Arndo": {"value": True},
             "bB2EMar": {"value": False},
             "bB3EMar": {"value": False},
             "bB4EMar": {"value": False},
@@ -41,7 +43,23 @@ def test_inlet_valve_writes_yNvCamAsp_and_outlet_valve_writes_yNvRes(monkeypatch
 
     assert posts[0][1]["values"] == {"yNvCamAsp": 1090}
     assert posts[1][1]["values"] == {"yNvRes": 2910}
-    assert emu.state["last_write_values"] == {"yNvCamAsp": 1090, "yNvRes": 2910}
+    assert posts[2][1]["values"] == {"yB1EMar": True}
+    assert emu.state["last_write_values"] == {
+        "yNvCamAsp": 1090,
+        "yNvRes": 2910,
+        "yB1EMar": True,
+    }
+
+
+def test_generate_emar_is_persisted_for_all_web_clients(monkeypatch, tmp_path):
+    state_path = tmp_path / "field_emulator_state.json"
+    monkeypatch.setenv("FIELD_EMULATOR_STATE_FILE", str(state_path))
+
+    emulator = FieldEmulator()
+    emulator.set_generate_emar(3, True)
+
+    reloaded = FieldEmulator()
+    assert reloaded.snapshot()["generate_emar"]["3"] is True
 
 
 def test_field_emulator_initializes_from_genuine_feedback_not_y_memory(monkeypatch):
@@ -55,7 +73,7 @@ def test_field_emulator_initializes_from_genuine_feedback_not_y_memory(monkeypat
 
     snap = {
         "timestamp": 1,
-        "write_mode": {"write_enabled": True},
+        "injection_mode": {"enabled": True},
         "values": {
             "gCamFn": {"value": 0},
             "gCamRb": {"value": 4000},
@@ -97,7 +115,7 @@ def test_reservoir_valve_50_balances_three_running_pumps_by_default(monkeypatch,
 
     snap = {
         "timestamp": 1,
-        "write_mode": {"write_enabled": True},
+        "injection_mode": {"enabled": True},
         "values": {
             "gCamFn": {"value": 0},
             "gCamRb": {"value": 4000},
