@@ -1,0 +1,34 @@
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sc-space-4);
+}
+
+.introduction {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: var(--sc-space-4);
+}
+
+.introduction p,
+.introduction h1,
+.introduction span { margin: 0; }
+
+.introduction p {
+  color: var(--sc-color-primary);
+  font-size: var(--sc-font-size-xs);
+  font-weight: 800;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.introduction h1 { font-size: clamp(var(--sc-font-size-xl), 5vw, var(--sc-font-size-2xl)); }
+.introduction span { color: var(--sc-color-text-muted); }
+.statuses { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: var(--sc-space-2); }
+.polling { display: grid; grid-template-columns: repeat(2, minmax(17rem, 1fr)); gap: var(--sc-space-2); }
+
+@media (max-width: 55rem) {
+  .introduction { align-items: flex-start; flex-direction: column; }
+  .polling { grid-template-columns: 1fr; }
+}

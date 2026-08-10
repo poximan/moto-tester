@@ -1,0 +1,7 @@
+.heading { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--sc-space-3); }
+.heading h2, .heading p { margin: 0; }
+.heading p, .toolbar span { color: var(--sc-color-text-muted); }
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sc-space-3); margin: var(--sc-space-4) 0; }
+.toolbar label { display: flex; align-items: center; gap: var(--sc-space-2); color: var(--sc-color-text-muted); }
+.toolbar select, .toolbar input { min-height: var(--sc-control-height); padding: var(--sc-space-2); border: 1px solid var(--sc-color-border); border-radius: var(--sc-radius-md); background: var(--sc-color-background); color: var(--sc-color-text); }
+.output { min-height: 16rem; max-height: 36rem; margin: 0; padding: var(--sc-space-4); overflow: auto; border: 1px solid var(--sc-color-border); border-radius: var(--sc-radius-md); background: #03080e; color: #b9fbc0; font-family: var(--sc-font-mono); font-size: var(--sc-font-size-xs); white-space: pre-wrap; }

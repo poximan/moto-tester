@@ -10,6 +10,8 @@ services:
     build:
       context: .
       dockerfile: trasvase-tester/Dockerfile
+      additional_contexts:
+        frontend-foundation: ../../platform/frontend-foundation
     container_name: moto-tester-trasvase-tester
     env_file:
       - .env

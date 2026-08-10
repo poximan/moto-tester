@@ -1,0 +1,17 @@
+.heading { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--sc-space-4); margin-bottom: var(--sc-space-4); }
+.heading h2, .heading p { margin: 0; }
+.heading p { color: var(--sc-color-text-muted); }
+.process { display: grid; grid-template-columns: minmax(10rem, .7fr) minmax(9rem, 1fr) minmax(14rem, 1.2fr) minmax(9rem, 1fr) minmax(10rem, .7fr); align-items: end; gap: var(--sc-space-3); min-height: 18rem; padding: var(--sc-space-4); border: 1px solid var(--sc-color-border); border-radius: var(--sc-radius-lg); background: color-mix(in srgb, var(--sc-color-info) 6%, var(--sc-color-background)); }
+.valve { display: flex; flex-direction: column; gap: var(--sc-space-2); color: var(--sc-color-text-muted); }
+.valve strong { color: var(--sc-color-text); font-size: var(--sc-font-size-lg); }
+.valve input { width: 100%; accent-color: var(--sc-color-primary); }
+.tank { position: relative; display: flex; flex-direction: column; justify-content: flex-end; min-height: 13rem; overflow: hidden; padding: var(--sc-space-3); border: 2px solid var(--sc-color-text-muted); border-top: 0; }
+.tank span, .tank strong { position: relative; z-index: 1; text-shadow: 0 1px 2px #000; }
+.tank strong { font-size: var(--sc-font-size-lg); }
+.water { position: absolute; right: 0; bottom: 0; left: 0; background: linear-gradient(180deg, color-mix(in srgb, var(--sc-color-info) 55%, transparent), color-mix(in srgb, var(--sc-color-info) 75%, #164e63)); transition: height var(--sc-transition-fast); }
+.pumpBank { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: var(--sc-space-2); align-self: center; }
+.pumpBank img { width: 3.5rem; height: 3.5rem; object-fit: contain; }
+.pumpBank span { width: 100%; color: var(--sc-color-text-muted); text-align: center; }
+.actions { display: flex; justify-content: flex-end; margin-top: var(--sc-space-3); }
+@media (max-width: 65rem) { .process { grid-template-columns: repeat(2, minmax(0, 1fr)); } .pumpBank { grid-column: 1 / -1; order: -1; } }
+@media (max-width: 45rem) { .heading { flex-direction: column; } .process { grid-template-columns: 1fr; } .pumpBank { grid-column: auto; } }

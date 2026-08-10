@@ -1,0 +1,15 @@
+.card { display: flex; flex-direction: column; gap: var(--sc-space-3); }
+.heading { display: flex; justify-content: space-between; align-items: center; gap: var(--sc-space-2); }
+.heading h3 { margin: 0; }
+.image { align-self: center; width: 7rem; height: 7rem; object-fit: contain; }
+.hours { text-align: center; font-variant-numeric: tabular-nums; }
+.indicators { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--sc-space-2); color: var(--sc-color-text-muted); font-size: var(--sc-font-size-sm); }
+.indicators span { display: flex; align-items: center; gap: var(--sc-space-2); }
+.indicators i { width: .7rem; height: .7rem; border-radius: 50%; }
+.on { background: var(--sc-color-success); box-shadow: 0 0 .5rem var(--sc-color-success); }
+.off { background: var(--sc-color-border); }
+.danger { background: var(--sc-color-danger); box-shadow: 0 0 .5rem var(--sc-color-danger); }
+.options, .commands { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sc-space-2); }
+.options { justify-content: space-between; }
+.options label { color: var(--sc-color-text-muted); font-size: var(--sc-font-size-sm); }
+.commands > button { flex: 1; }

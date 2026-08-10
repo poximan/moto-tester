@@ -1,0 +1,6 @@
+.heading { margin-bottom: var(--sc-space-3); }
+.heading h2, .heading p { margin: 0; }
+.heading p { color: var(--sc-color-text-muted); }
+.grid { display: grid; grid-template-columns: repeat(5, minmax(13rem, 1fr)); gap: var(--sc-space-3); }
+@media (max-width: 80rem) { .grid { grid-template-columns: repeat(3, minmax(13rem, 1fr)); } }
+@media (max-width: 50rem) { .grid { grid-template-columns: 1fr; } }

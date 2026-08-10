@@ -213,8 +213,9 @@ trasvase-tester/
     addressing.py    Conversión Modicon <-> PDU.
     state.py         Estado runtime, snapshots, cola de escritura.
     write_mode.py    Lectura/escritura persistente de runtime/write_mode.txt.
-    static/          UI web: tablas SCA, bombas, válvulas e inyecciones separadas.
-      assets/        PNGs de bombas por estado.
+  frontend/          React + TypeScript estricto + Vite.
+    src/             Contratos, clientes y componentes de dominio.
+    public/assets/   PNGs de bombas por estado.
 field-emulator/
   Dockerfile         Imagen del servicio experto.
   requirements.txt   Dependencias del servicio experto.
@@ -229,6 +230,16 @@ tests/
   test_addressing.py
   test_config.py
 ```
+
+## Frontend
+
+La interfaz consume `@servicoop/frontend-foundation` como autoridad única para
+tokens, estilos base, componentes globales y navegación. Las representaciones de
+proceso, bombas, tablas Modbus e inyecciones permanecen dentro de este producto.
+
+El frontend usa los contratos HTTP y WebSocket existentes. No accede al estado
+Python ni a archivos runtime. El build Vite ocurre en una etapa Docker separada y
+la imagen final recibe únicamente los archivos estáticos resultantes.
 
 ## Seguridad operativa
 

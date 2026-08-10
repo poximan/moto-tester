@@ -10,7 +10,6 @@ from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from .config import AppConfig, load_config
@@ -32,7 +31,7 @@ from .write_mode import WriteModeStore
 from .logging_utils import configure_file_logger, log_dir, tail_file
 
 APP_DIR = Path(__file__).resolve().parent
-STATIC_DIR = APP_DIR / "static"
+FRONTEND_DIR = APP_DIR.parent / "frontend"
 LOGGER = configure_file_logger("trasvase.web", "trasvase-tester.log")
 
 config: AppConfig = load_config()
@@ -65,9 +64,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-
 
 def require_operator(request: Request) -> None:
     request_authenticator.require_operator(request)
@@ -128,11 +124,6 @@ async def on_shutdown() -> None:
     LOGGER.info("shutdown web/modbus service")
     await snapshot_hub.stop()
     poller.stop()
-
-
-@app.get("/", include_in_schema=False)
-def index() -> FileResponse:
-    return FileResponse(STATIC_DIR / "index.html")
 
 
 @app.get("/api/health")
@@ -435,3 +426,6 @@ def emulator_valves(
 ) -> dict[str, Any]:
     payload = {k: v for k, v in body.model_dump().items() if v is not None}
     return _emulator_request("PUT", "/valves", payload)
+
+
+app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")

@@ -1,0 +1,28 @@
+.control {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--sc-space-2);
+  min-width: 17rem;
+  padding: var(--sc-space-2);
+  border: 1px solid var(--sc-color-border);
+  border-radius: var(--sc-radius-md);
+  background: var(--sc-color-surface);
+}
+
+.control label {
+  display: flex;
+  align-items: center;
+  gap: var(--sc-space-1);
+  color: var(--sc-color-text-muted);
+  font-size: var(--sc-font-size-xs);
+}
+
+.control input {
+  width: 5.5rem;
+  padding: var(--sc-space-1) var(--sc-space-2);
+  border: 1px solid var(--sc-color-border);
+  border-radius: var(--sc-radius-sm);
+  background: var(--sc-color-background);
+  color: var(--sc-color-text);
+}

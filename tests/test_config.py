@@ -14,6 +14,7 @@ from app.write_mode import READ_ONLY, WRITE_ENABLED, WriteModeStore
 RUNTIME_SECTIONS = {"server", "controller", "polling", "safety", "runtime"}
 SERVICE_DIR = Path("trasvase-tester")
 SERVICE_APP = SERVICE_DIR / "app"
+SERVICE_FRONTEND = SERVICE_DIR / "frontend"
 FIELD_EMULATOR_DIR = Path("field-emulator")
 
 
@@ -319,17 +320,26 @@ def test_polling_excludes_injection_memory_from_reads():
 
 
 def test_ui_has_sca_tables_and_two_injection_tables():
-    html = (SERVICE_APP / "static/index.html").read_text(encoding="utf-8")
-    js = (SERVICE_APP / "static/app.js").read_text(encoding="utf-8")
+    production = (SERVICE_FRONTEND / "src/components/ProductionTables.tsx").read_text(encoding="utf-8")
+    injection = (SERVICE_FRONTEND / "src/components/InjectionPanel.tsx").read_text(encoding="utf-8")
+    client = (SERVICE_FRONTEND / "src/TrasvaseApiClient.ts").read_text(encoding="utf-8")
 
-    assert "Mapa Modbus de producción" not in html
-    assert "sca-table-grid" in html
-    assert "analog-injection-body" in html
-    assert "digital-injection-body" in html
-    assert "facade-body" not in html
-    assert "/api/injection" in js
-    assert "scaTableOrder" in js
-    assert "SCA - lectura AN [0]" not in html  # se renderiza desde config/API
+    assert "TABLE_ORDER" in production
+    assert '"analog_reads"' in production
+    assert '"digital_commands"' in production
+    assert 'table("analog_setpoints"' in injection
+    assert 'table("digital_commands"' in injection
+    assert '"api/injection"' in client
+
+
+def test_frontend_uses_the_shared_react_foundation_without_tailwind():
+    package = (SERVICE_FRONTEND / "package.json").read_text(encoding="utf-8")
+    app = (SERVICE_FRONTEND / "src/App.tsx").read_text(encoding="utf-8")
+    assert '"react": "19.2.8"' in package
+    assert '"vite": "8.1.5"' in package
+    assert '"@servicoop/frontend-foundation"' in package
+    assert "tailwind" not in package.lower()
+    assert "AppShell" in app
 
 
 def test_dockerfiles_are_next_to_services_not_root():
@@ -346,47 +356,44 @@ def test_dockerfiles_are_next_to_services_not_root():
     assert "dockerfile: app/Dockerfile" not in compose
     assert "dockerfile: field_emulator/Dockerfile" not in compose
     assert "COPY runtime" not in app_dockerfile
-    assert "COPY trasvase-tester ./trasvase-tester" in app_dockerfile
+    assert "FROM node:24.18.0-alpine AS frontend-builder" in app_dockerfile
+    assert "trasvase-tester/app ./trasvase-tester/app" in app_dockerfile
+    assert "COPY --from=frontend-builder" in app_dockerfile
     assert "COPY field-emulator ./field-emulator" in field_emulator_dockerfile
 
 
 def test_pump_assets_are_packaged():
-    asset_dir = SERVICE_APP / "static/assets"
+    asset_dir = SERVICE_FRONTEND / "public/assets"
     assert (asset_dir / "pump_gray.png").exists()
     assert (asset_dir / "pump_red.png").exists()
     assert (asset_dir / "pump_blue.png").exists()
     assert (asset_dir / "pump_green.png").exists()
 
 
-def test_mode_section_removed_and_topbar_toggle_used():
-    html = (SERVICE_APP / "static/index.html").read_text(encoding="utf-8")
-    js = (SERVICE_APP / "static/app.js").read_text(encoding="utf-8")
-    assert "mode-card" not in html
-    assert "write-mode-detail" not in html
-    assert "toggleWriteMode" in js
-    assert 'id="write-pill"' in html
+def test_write_mode_is_controlled_from_the_react_status_header():
+    app = (SERVICE_FRONTEND / "src/App.tsx").read_text(encoding="utf-8")
+    header = (SERVICE_FRONTEND / "src/components/StatusHeader.tsx").read_text(encoding="utf-8")
+    assert "mode-card" not in app
+    assert "setWriteMode" in app
+    assert "snapshot.write_mode.mode" in header
 
 
 def test_front_uses_websocket_stream_and_does_not_poll_refresh_snapshot():
-    html = (SERVICE_APP / "static/index.html").read_text(encoding="utf-8")
-    js = (SERVICE_APP / "static/app.js").read_text(encoding="utf-8")
+    stream = (SERVICE_FRONTEND / "src/TrasvaseStreamClient.ts").read_text(encoding="utf-8")
+    client = (SERVICE_FRONTEND / "src/TrasvaseApiClient.ts").read_text(encoding="utf-8")
     main = (SERVICE_APP / "main.py").read_text(encoding="utf-8")
 
-    assert '/ws/stream' in js
+    assert '"ws/stream"' in client
     assert '@app.websocket("/ws/stream")' in main
-    assert 'setInterval(refresh' not in js
-    assert 'await refresh()' not in js
-    assert 'entra por' not in html
+    assert "setInterval" not in stream
+    assert "new WebSocket" in stream
 
 
 def test_digital_injection_is_checkbox_without_extra_set_button():
-    html = (SERVICE_APP / "static/index.html").read_text(encoding="utf-8")
-    js = (SERVICE_APP / "static/app.js").read_text(encoding="utf-8")
-
-    assert '<tbody id="digital-injection-body"></tbody>' in html
-    assert '<th>Set</th><th></th>' not in html.split('digital-injection-body')[0].split('analog-injection-body')[-1]
-    assert "onchange='sendInjection(\"${v.tag}\")'" in js
-    assert 'if (v) updateInjectionInput(v)' not in js
+    source = (SERVICE_FRONTEND / "src/components/InjectionPanel.tsx").read_text(encoding="utf-8")
+    assert 'name === "digital_commands"' in source
+    assert 'type="checkbox"' in source
+    assert "client.inject(signal.tag, event.target.checked)" in source
 
 
 def test_modbus_points_match_ace3600_formula_ranges():
@@ -412,69 +419,60 @@ def test_modbus_points_match_ace3600_formula_ranges():
 
 
 def test_pump_cards_include_arr_emar_generation_and_specific_pills():
-    js = (SERVICE_APP / "static/app.js").read_text(encoding="utf-8")
-    html = (SERVICE_APP / "static/index.html").read_text(encoding="utf-8")
+    pump = (SERVICE_FRONTEND / "src/components/PumpCard.tsx").read_text(encoding="utf-8")
+    header = (SERVICE_FRONTEND / "src/components/StatusHeader.tsx").read_text(encoding="utf-8")
 
     assert "bB1Arndo" in Path("config/default.yaml").read_text(encoding="utf-8")
-    assert "generar EMar" in js
-    assert "processGenerateEmar" in js
-    assert "yB${pump}EMar" in js
-    assert "Automatico" in js
-    assert "bB${pump}Arndo" not in js  # el tag llega agrupado como p.arr desde backend
-    assert "PLC: sin datos" in html
-    assert "Fuente: PLC" in html
-    assert "RTU (0)" not in js
-    assert "Tablero (1)" not in js
+    assert "generar EMar" in pump
+    assert "web-generar-emar" in pump
+    assert "pump.arr" in pump
+    assert "Fuente: PLC" in header
+    assert "RTU (0)" not in pump
+    assert "Tablero (1)" not in pump
 
 
 def test_logs_ui_and_api_are_present():
-    html = (SERVICE_APP / "static/index.html").read_text(encoding="utf-8")
-    js = (SERVICE_APP / "static/app.js").read_text(encoding="utf-8")
+    panel = (SERVICE_FRONTEND / "src/components/LogsPanel.tsx").read_text(encoding="utf-8")
+    client = (SERVICE_FRONTEND / "src/TrasvaseApiClient.ts").read_text(encoding="utf-8")
     main = (SERVICE_APP / "main.py").read_text(encoding="utf-8")
-    assert "Diagnóstico y logs" in html
-    assert "logs-view" in html
-    assert "/api/logs" in js
+    assert "Diagnóstico y logs" in panel
+    assert '"api/logs"' in client
     assert "@app.get(\"/api/logs\")" in main
     assert "@app.get(\"/api/logs/{log_name}\")" in main
     assert "@app.get(\"/api/diagnostics\")" in main
-    assert "Ver diagnóstico" in html
-    assert "Recargar archivo" in html
-    assert "Listar logs" not in html
+    assert "Ver diagnóstico" in panel
+    assert "Recargar archivo" in panel
 
 
 def test_ui_controls_each_read_function_code_and_sample_rate():
-    html = (SERVICE_APP / "static/index.html").read_text(encoding="utf-8")
-    js = (SERVICE_APP / "static/app.js").read_text(encoding="utf-8")
+    header = (SERVICE_FRONTEND / "src/components/StatusHeader.tsx").read_text(encoding="utf-8")
+    control = (SERVICE_FRONTEND / "src/components/PollingControl.tsx").read_text(encoding="utf-8")
+    client = (SERVICE_FRONTEND / "src/TrasvaseApiClient.ts").read_text(encoding="utf-8")
     main = (SERVICE_APP / "main.py").read_text(encoding="utf-8")
 
     for function_code in ("01", "02", "03", "04"):
-        assert f'id="fc-toggle-{function_code}"' in html
-        assert f'id="fc-rate-{function_code}"' in html
-    assert 'value="2000"' in html
-    assert "toggleFunctionCode" in js
-    assert "setFunctionSampleRate" in js
-    assert "api/modbus-polling" in js
+        assert f'"{function_code}"' in header
+    assert "sample_rate_ms" in control
+    assert "3_600_000" in control
+    assert "api/modbus-polling" in client
     assert '@app.get("/api/modbus-polling")' in main
     assert '@app.put("/api/modbus-polling/{function_code}")' in main
 
 
 def test_sca_window_title_shows_modbus_details():
-    js = (SERVICE_APP / "static/app.js").read_text(encoding="utf-8")
-    css = (SERVICE_APP / "static/styles.css").read_text(encoding="utf-8")
-
-    assert "modbusTitleMeta" in js
-    assert "FC${fc}" in js
-    assert "inicio ${startRef}" in js
-    assert "offset ${startPdu}" in js
-    assert "prod 0..${lastProdRow}" in js
-    assert "window-modbus-meta" in js
-    assert ".window-modbus-meta" in css
+    source = (SERVICE_FRONTEND / "src/components/ProductionTables.tsx").read_text(encoding="utf-8")
+    assert "FC{fc}" in source
+    assert "inicio {table.start_ref}" in source
+    assert "offset {table.start_pdu}" in source
+    assert "prod 0..{lastRow}" in source
 
 
 def test_compose_waits_for_web_health_before_field_emulator():
     compose = Path("docker-compose.yml").read_text(encoding="utf-8")
-    assert "healthcheck:" in compose
-    assert "/api/health" in compose
+    compose_data = yaml.safe_load(compose)
+    dockerfile = (SERVICE_DIR / "Dockerfile").read_text(encoding="utf-8")
+    assert "HEALTHCHECK" in dockerfile
+    assert "/api/health" in dockerfile
     assert "condition: service_healthy" in compose
     # El web no debe depender del emulador: el emulador consume la API web.
-    assert "trasvase-tester:\n    build:" in compose
+    assert "depends_on" not in compose_data["services"]["trasvase-tester"]

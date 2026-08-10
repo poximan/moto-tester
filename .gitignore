@@ -18,6 +18,8 @@ htmlcov/
 dist/
 build/
 *.egg-info/
+node_modules/
+*.tsbuildinfo
 
 # Local virtual environments
 .venv/
