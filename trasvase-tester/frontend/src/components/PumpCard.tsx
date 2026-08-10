@@ -3,6 +3,7 @@ import { Button, Card, StatusBadge } from "@servicoop/frontend-foundation";
 import type { TrasvaseApiClient } from "../TrasvaseApiClient";
 import { TrasvasePresenter } from "../TrasvasePresenter";
 import type { PumpSnapshot, SignalValue } from "../TrasvaseModels";
+import { FixedPositionSelector } from "./FixedPositionSelector";
 import styles from "./PumpCard.module.css";
 
 export interface PumpCardProps {
@@ -37,7 +38,7 @@ export function PumpCard({ client, connected, execute, generateEmar, presenter, 
       </div>
       <div className={styles.options}>
         <label><input checked={generateEmar} onChange={(event) => void execute(() => client.setGenerateEmar(pump.id, event.target.checked))} type="checkbox" /> generar EMar</label>
-        <Button onClick={() => void execute(() => client.inject(`yB${pump.id}RTU`, !rtu))} variant="ghost">{rtu ? "RTU" : "Tablero"}</Button>
+        <FixedPositionSelector onChange={(nextRtu) => void execute(() => client.inject(`yB${pump.id}RTU`, nextRtu))} rtu={rtu} />
       </div>
       <div className={styles.commands}>
         <Button onClick={() => void command({ aut: !automatic })} variant="secondary">{automatic ? "Auto" : "Man"}</Button>

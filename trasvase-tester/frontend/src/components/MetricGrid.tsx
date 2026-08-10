@@ -19,7 +19,7 @@ export function MetricGrid({ presenter, snapshot }: MetricGridProps) {
         return (
           <Card className={styles.metric} key={tag}>
             <span>{label}</span><strong>{presenter.signalText(signal)}</strong>
-            <StatusBadge tone={presenter.qualityTone(signal)}>{signal?.quality ?? "unknown"}</StatusBadge>
+            <StatusBadge className={styles.quality} tone={presenter.qualityTone(signal)}>{signal?.quality ?? "unknown"}</StatusBadge>
             <small>{signal ? `fila ${signal.row} · ref ${signal.reference} · ${signal.age_s ?? "—"} s` : "Sin señal"}</small>
           </Card>
         );

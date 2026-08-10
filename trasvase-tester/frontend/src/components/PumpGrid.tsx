@@ -15,7 +15,7 @@ export interface PumpGridProps {
 export function PumpGrid({ client, emulator, execute, presenter, snapshot }: PumpGridProps) {
   return (
     <section>
-      <div className={styles.heading}><h2>Bombas 4+1</h2><p>Estado, selectora, generación EMar y comandos operativos.</p></div>
+      <div className={styles.heading}><h2>Bombas 4+1</h2><p>Estado, selectora fija Tablero/RTU, generación EMar y comandos operativos.</p></div>
       <div className={styles.grid}>
         {snapshot.groups.pumps.map((pump) => (
           <PumpCard

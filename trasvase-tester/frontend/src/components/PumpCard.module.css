@@ -9,7 +9,7 @@
 .on { background: var(--sc-color-success); box-shadow: 0 0 .5rem var(--sc-color-success); }
 .off { background: var(--sc-color-border); }
 .danger { background: var(--sc-color-danger); box-shadow: 0 0 .5rem var(--sc-color-danger); }
-.options, .commands { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sc-space-2); }
-.options { justify-content: space-between; }
+.options, .commands { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sc-space-3); }
+.options { flex-direction: column; align-items: stretch; }
 .options label { color: var(--sc-color-text-muted); font-size: var(--sc-font-size-sm); }
 .commands > button { flex: 1; }
