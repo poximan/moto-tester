@@ -37,7 +37,7 @@ export function ProcessPanel({ emulator, onValves, presenter, snapshot }: Proces
   return (
     <Card>
       <div className={styles.heading}>
-        <div><h2>Emulador de campo</h2><p>Las válvulas gobiernan inyecciones y*; los niveles usan feedback del intercambio real.</p></div>
+        <h2>Emulador de campo</h2>
         <StatusBadge tone={emulator.last_error ? "danger" : emulator.injection_enabled === false ? "warning" : "success"}>
           {emulator.last_error ? "Emulador con error" : emulator.injection_enabled === false ? "Inyección y* deshabilitada" : "Inyección y* habilitada"}
         </StatusBadge>
@@ -50,13 +50,12 @@ export function ProcessPanel({ emulator, onValves, presenter, snapshot }: Proces
               <stop offset="0" stopColor="#4fc3f7" stopOpacity=".72" />
               <stop offset="1" stopColor="#0369a1" stopOpacity=".92" />
             </linearGradient>
-            <marker id="flowArrow" markerHeight="8" markerWidth="8" orient="auto" refX="7" refY="4">
-              <path d="M0,0 L8,4 L0,8 Z" fill="currentColor" />
+            <marker id="flowArrow" markerHeight="9" markerUnits="userSpaceOnUse" markerWidth="9" orient="auto" refX="8" refY="4.5" viewBox="0 0 9 9">
+              <path d="M0,0 L9,4.5 L0,9 Z" fill="currentColor" />
             </marker>
           </defs>
 
           <path className={styles.ground} d="M24 260 H1176" />
-          <text className={styles.groundLabel} x="32" y="248">NIVEL DE SUELO · COTA 0</text>
 
           <path className={styles.pipe} d="M24 360 H76" markerEnd="url(#flowArrow)" />
           <text className={styles.pipeLabel} x="24" y="345">INGRESO</text>
@@ -64,8 +63,6 @@ export function ProcessPanel({ emulator, onValves, presenter, snapshot }: Proces
           <path className={styles.tankOutline} d="M76 286 V476 H664 V286" />
           <rect fill="url(#processWater)" height={chamberWaterHeight} width="580" x="80" y={472 - chamberWaterHeight} />
           <path className={styles.waterLine} d={`M80 ${472 - chamberWaterHeight} H660`} />
-          <text className={styles.equipmentLabel} x="96" y="444">CÁMARA DE ASPIRACIÓN · ENTERRADA</text>
-          <text className={styles.valueLabel} x="96" y="466">Nivel {chamber}</text>
 
           <path className={styles.manifold} d="M250 106 H1016 V150" markerEnd="url(#flowArrow)" />
           <text className={styles.pipeLabel} x="680" y="92">MÚLTIPLE DE IMPULSIÓN A RESERVA</text>
@@ -88,8 +85,6 @@ export function ProcessPanel({ emulator, onValves, presenter, snapshot }: Proces
           <path className={styles.tankOutline} d="M900 150 V260 H1134 V150" />
           <rect fill="url(#processWater)" height={reserveWaterHeight} width="226" x="904" y={256 - reserveWaterHeight} />
           <path className={styles.waterLine} d={`M904 ${256 - reserveWaterHeight} H1130`} />
-          <text className={styles.equipmentLabel} x="916" y="218">RESERVA</text>
-          <text className={styles.valueLabel} x="916" y="242">Nivel {reserve}</text>
           <path className={styles.pipe} d="M1134 214 H1176" markerEnd="url(#flowArrow)" />
           <text className={styles.pipeLabel} x="1082" y="198">SALIDA</text>
         </svg>

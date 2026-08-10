@@ -1,4 +1,4 @@
-import { Button, Card, StatusBadge } from "@servicoop/frontend-foundation";
+import { Button, Card } from "@servicoop/frontend-foundation";
 
 import type { TrasvaseApiClient } from "../TrasvaseApiClient";
 import { TrasvasePresenter } from "../TrasvasePresenter";
@@ -28,7 +28,7 @@ export function PumpCard({ client, connected, execute, generateEmar, presenter, 
 
   return (
     <Card className={styles.card}>
-      <div className={styles.heading}><h3>Bomba {pump.id}</h3><StatusBadge tone={visual.tone}>{visual.label}</StatusBadge></div>
+      <div className={styles.heading}><h3>Bomba {pump.id}</h3></div>
       <img alt={`Bomba ${pump.id}: ${visual.label}`} className={styles.image} src={`assets/pump_${visual.image}.png`} />
       <strong className={styles.hours}>{presenter.signalText(pump.hours)} h</strong>
       <div className={styles.indicators}>
@@ -41,9 +41,11 @@ export function PumpCard({ client, connected, execute, generateEmar, presenter, 
         <FixedPositionSelector onChange={(nextRtu) => void execute(() => client.inject(`yB${pump.id}RTU`, nextRtu))} rtu={rtu} />
       </div>
       <div className={styles.commands}>
-        <Button onClick={() => void command({ aut: !automatic })} variant="secondary">{automatic ? "Auto" : "Man"}</Button>
-        <Button onClick={() => void command({ mr: true })}>Marcha</Button>
-        <Button onClick={() => void command({ mr: false })} variant="secondary">Parada</Button>
+        <Button className={styles.modeCommand} onClick={() => void command({ aut: !automatic })} variant="secondary">{automatic ? "Auto" : "Man"}</Button>
+        <div className={styles.runCommands}>
+          <Button onClick={() => void command({ mr: true })}>Marcha</Button>
+          <Button onClick={() => void command({ mr: false })} variant="secondary">Parada</Button>
+        </div>
       </div>
     </Card>
   );

@@ -24,7 +24,8 @@
   text-transform: none;
 }
 
-.activeLabel { color: var(--sc-color-warning); }
+.boardActive { color: var(--sc-color-info); }
+.rtuActive { color: var(--sc-color-success); }
 
 .head {
   display: grid;
@@ -39,6 +40,8 @@
 
 .head:focus-visible { outline: 3px solid var(--sc-color-info); outline-offset: 3px; }
 .head:disabled { cursor: not-allowed; filter: grayscale(1); opacity: .55; }
+.boardPosition .bezel { box-shadow: inset 0 0 0 .18rem #353535, 0 0 .55rem color-mix(in srgb, var(--sc-color-info) 70%, transparent); }
+.rtuPosition .bezel { box-shadow: inset 0 0 0 .18rem #353535, 0 0 .55rem color-mix(in srgb, var(--sc-color-success) 70%, transparent); }
 
 .bezel {
   position: relative;

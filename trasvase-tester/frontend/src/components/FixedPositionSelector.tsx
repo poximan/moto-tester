@@ -10,11 +10,11 @@ export function FixedPositionSelector({ disabled = false, onChange, rtu }: Fixed
   const position = rtu ? "RTU" : "Tablero";
   return (
     <div className={styles.selector}>
-      <span className={!rtu ? styles.activeLabel : undefined}>Tablero</span>
+      <span className={!rtu ? styles.boardActive : undefined}>Tablero</span>
       <button
         aria-label={`Selectora fija Tablero RTU. Posición actual: ${position}`}
         aria-pressed={rtu}
-        className={styles.head}
+        className={`${styles.head} ${rtu ? styles.rtuPosition : styles.boardPosition}`}
         disabled={disabled}
         onClick={() => onChange(!rtu)}
         title={`Cambiar a ${rtu ? "Tablero" : "RTU"}`}
@@ -24,7 +24,7 @@ export function FixedPositionSelector({ disabled = false, onChange, rtu }: Fixed
           <span className={`${styles.handle} ${rtu ? styles.handleRtu : styles.handleBoard}`} />
         </span>
       </button>
-      <span className={rtu ? styles.activeLabel : undefined}>RTU</span>
+      <span className={rtu ? styles.rtuActive : undefined}>RTU</span>
       <small>Cabezal plástico tipo XB5 · 2 posiciones fijas</small>
     </div>
   );
