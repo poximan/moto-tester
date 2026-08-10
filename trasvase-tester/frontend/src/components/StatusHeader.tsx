@@ -20,7 +20,11 @@ export function StatusHeader({ config, onPolling, onWriteMode, snapshot, streamS
   return (
     <header className={styles.header}>
       <div className={styles.introduction}>
-        <div><p>{config.project}</p><h1>Trasvase Tester</h1><span>Operación Modbus/TCP y frontera de emulación</span></div>
+        <div>
+          <p>{config.project.name}</p>
+          <h1>Trasvase Tester</h1>
+          <span>{config.project.description}</span>
+        </div>
         <div className={styles.statuses}>
           <StatusBadge tone={snapshot.connection.connected ? "success" : "danger"}>
             {snapshot.connection.connected ? "PLC conectado" : "PLC desconectado"}

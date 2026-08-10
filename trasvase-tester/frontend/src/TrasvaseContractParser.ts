@@ -10,7 +10,7 @@ import type {
 export class TrasvaseContractParser {
   public parseConfig(payload: unknown): TesterConfig {
     const record = this.requireRecord(payload, "config");
-    this.requireString(record, "project", "config");
+    this.requireProject(record.project, "config.project");
     this.requireRecord(record.controller, "config.controller");
     this.requireRecord(record.polling, "config.polling");
     this.requireRecord(record.write_mode, "config.write_mode");
@@ -32,7 +32,7 @@ export class TrasvaseContractParser {
 
   public parseSnapshot(payload: unknown): RuntimeSnapshot {
     const record = this.requireRecord(payload, "snapshot");
-    this.requireString(record, "project", "snapshot");
+    this.requireProject(record.project, "snapshot.project");
     this.requireNumber(record, "timestamp", "snapshot");
     this.requireRecord(record.connection, "snapshot.connection");
     this.requireRecord(record.write_mode, "snapshot.write_mode");
@@ -96,6 +96,12 @@ export class TrasvaseContractParser {
       exists: this.requireBoolean(record, "exists", "log"),
       lines: record.lines,
     };
+  }
+
+  private requireProject(payload: unknown, path: string): void {
+    const project = this.requireRecord(payload, path);
+    this.requireString(project, "name", path);
+    this.requireString(project, "description", path);
   }
 
   private requirePolling(payload: unknown, path: string): void {

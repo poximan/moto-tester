@@ -2,6 +2,11 @@ export type SignalScalar = boolean | number | string | null;
 export type SignalQuality = "unknown" | "good" | "stale" | "error" | "local";
 export type WriteModeName = "read_only" | "write_enabled";
 
+export interface ProjectDefinition {
+  name: string;
+  description: string;
+}
+
 export interface SignalValue {
   tag: string;
   label: string;
@@ -85,7 +90,7 @@ export interface PumpSnapshot {
 }
 
 export interface RuntimeSnapshot {
-  project: string;
+  project: ProjectDefinition;
   timestamp: number;
   connection: ConnectionState;
   write_mode: WriteModeState;
@@ -97,7 +102,7 @@ export interface RuntimeSnapshot {
 }
 
 export interface TesterConfig {
-  project: string;
+  project: ProjectDefinition;
   controller: { host: string; port: number; unit_id: number; timeout_s: number };
   polling: { interval_ms: number; max_stale_ms: number };
   addressing_mode: string;
