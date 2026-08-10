@@ -48,6 +48,8 @@
 
 7. Convenciones de nombres y estructura de carpetas
 - Usar nombres descriptivos en minusculas y kebab-case para proyectos, servicios y carpetas de infraestructura.
+- Declarar un `name` explicito para toda red Docker Compose; nunca depender del nombre automatico `<proyecto>_<red>`.
+- Nombrar las redes privadas `{proyecto}-{proposito}-net` y las compartidas `servicoop-{proposito}-net`.
 - Usar el mismo nombre para componentes que cumplen la misma funcion y nombres distintos cuando las responsabilidades difieren.
 - Reservar edge-gateway para el unico punto de ruteo de frontera, artifact-repository para el repositorio central, channel-adapter para adaptadores de canal y tunnel-client para el transporte de tunel.
 - Evitar nombres coloquiales, sufijos genericos redundantes y abreviaturas que no formen parte del lenguaje ubicuo del dominio.

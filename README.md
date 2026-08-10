@@ -278,7 +278,7 @@ Archivos principales:
 
 ## Acceso
 
-`trasvase-tester` sólo expone el puerto interno `8080` en `servicoop-edge-net`. No existe binding al host ni acceso LAN directo. Todo acceso de operador entra por `https://comunicaciones.servicoop.com.ar/moto-tester/`, donde `edge-gateway` valida la sesión protegida. Los endpoints mutables vuelven a verificar esa sesión en el servicio.
+`trasvase-tester` sólo expone el puerto interno `8080` en `servicoop-edge-net`. No existe binding al host ni acceso LAN directo. Todo acceso de operador entra por `https://comunicaciones.servicoop.com.ar/moto-tester/`, donde `edge-gateway` valida la sesión protegida. Los endpoints mutables vuelven a verificar esa sesión en el servicio. La comunicación privada con `field-emulator` usa `moto-tester-backend-net`.
 ## Orden de arranque y error `Connection refused` del emulador
 
 El `field-emulator` consume la API interna del servicio web en `http://trasvase-tester:8080`. Si el emulador arranca antes de que Uvicorn esté aceptando conexiones, aparece un error transitorio:

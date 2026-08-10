@@ -19,7 +19,7 @@ services:
       - ./runtime:/app/runtime
     restart: unless-stopped
     networks:
-      - default
+      - backend
       - edge
 
   field-emulator:
@@ -40,11 +40,15 @@ services:
     volumes:
       - ./runtime:/runtime
     restart: unless-stopped
+    networks:
+      - backend
 
 name: moto-tester
 
 networks:
-  default:
+  backend:
+    name: moto-tester-backend-net
+    driver: bridge
   edge:
     name: servicoop-edge-net
     external: true
