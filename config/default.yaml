@@ -51,7 +51,7 @@ tables:
     start_ref: 42049
     count: 35
     data_type: int16
-    writable: false
+    writable: true
     signals:
     - row: 0
       tag: gResSp

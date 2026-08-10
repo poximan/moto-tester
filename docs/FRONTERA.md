@@ -39,7 +39,7 @@ Ubicación vigente de inyección:
 
 ## Escritura
 
-La escritura real requiere sesión protegida, interlock local armado y un lease temporal. `runtime/write_mode.txt` refleja el estado efectivo:
+La escritura real requiere sesión protegida y un lease temporal. `runtime/write_mode.txt` refleja el estado efectivo:
 
 ```text
 read_only
@@ -51,7 +51,7 @@ No escribe al PLC. Registra el pedido localmente para prueba de UI/API.
 write_enabled
 ```
 
-Permite escribir tags marcados como `writable: true`: comandos reales `cB#*` e inyecciones `y*`, sólo hasta el vencimiento del lease. Cada arranque, interlock inválido o desarmado fuerza `read_only`.
+Permite escribir tags marcados como `writable: true`: comandos reales `cB#*` e inyecciones `y*`, sólo hasta el vencimiento del lease. Cada arranque fuerza `read_only` y el operador autenticado puede habilitarlo nuevamente desde la interfaz web.
 
 
 ## Servicio experto de emulación

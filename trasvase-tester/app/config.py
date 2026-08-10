@@ -160,8 +160,7 @@ class RuntimeConfig:
     field_emulator_url: str
     edge_auth_verify_url: str
     internal_emulator_token: str
-    write_interlock_file: str
-    write_enable_lease_seconds: int
+    injection_enable_lease_seconds: int
 
 
 @dataclass(frozen=True)
@@ -257,11 +256,10 @@ def load_config(path: str | Path | None = None) -> AppConfig:
         field_emulator_url=_env_required("FIELD_EMULATOR_URL"),
         edge_auth_verify_url=_env_required("EDGE_AUTH_VERIFY_URL"),
         internal_emulator_token=_env_required("INTERNAL_EMULATOR_TOKEN"),
-        write_interlock_file=_env_required("WRITE_INTERLOCK_FILE"),
-        write_enable_lease_seconds=_env_int("WRITE_ENABLE_LEASE_SECONDS"),
+        injection_enable_lease_seconds=_env_int("INJECTION_ENABLE_LEASE_SECONDS"),
     )
-    if runtime.write_enable_lease_seconds < 60:
-        raise ValueError("WRITE_ENABLE_LEASE_SECONDS debe ser al menos 60")
+    if runtime.injection_enable_lease_seconds < 60:
+        raise ValueError("INJECTION_ENABLE_LEASE_SECONDS debe ser al menos 60")
 
     tables: dict[str, TableDefinition] = {}
     signals_by_tag: dict[str, Signal] = {}
@@ -316,6 +314,8 @@ def load_config(path: str | Path | None = None) -> AppConfig:
                 injects_tag=signal_raw.get("injects_tag"),
                 injection_group=signal_raw.get("injection_group"),
             )
+            if signal.facade != tag.startswith("y"):
+                raise ValueError(f"El tag {tag} debe respetar la correspondencia y* = inyeccion")
             if tag in signals_by_tag:
                 raise ValueError(f"Tag duplicado en mapa Modbus: {tag}")
             signals_by_tag[tag] = signal

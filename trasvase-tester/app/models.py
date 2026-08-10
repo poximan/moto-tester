@@ -34,10 +34,10 @@ class GenericWriteBody(BaseModel):
     source: str = "web"
 
 
-class WriteModeBody(BaseModel):
-    mode: Literal["read_only", "write_enabled"] = Field(
+class InjectionModeBody(BaseModel):
+    mode: Literal["disabled", "enabled"] = Field(
         ...,
-        description="Modo persistido en runtime/write_mode.txt",
+        description="Modo de tags y* persistido en runtime/injection_mode.txt",
     )
     source: str = Field(default="web", description="Origen del cambio")
 

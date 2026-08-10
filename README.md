@@ -12,8 +12,8 @@ La solución contiene tres componentes dockerizados:
 
 Hay una separación estricta:
 
-- `.env`: **única fuente de verdad para configuración de despliegue**: PLC, autenticación interna, interlock, polling, timeouts, modo simulación y parámetros del servicio experto.
-- `runtime/write_mode.txt`: estado efectivo del modo de escritura. Cada arranque lo fuerza a `read_only`; `write_enabled` sólo se admite con interlock local armado y lease vigente.
+- `.env`: **única fuente de verdad para configuración de despliegue**: PLC, autenticación interna, polling, timeouts, modo simulación y parámetros del servicio experto.
+- `runtime/write_mode.txt`: estado efectivo del modo de escritura. Cada arranque lo fuerza a `read_only`; `write_enabled` sólo se admite con sesión protegida y lease vigente.
 - `runtime/modbus_polling.json`: control persistente e independiente de las lecturas FC01, FC02, FC03 y FC04. Todas nacen activas usando `POLL_INTERVAL_MS` —2000 ms en el `.env.example`—; la botonera de cabecera permite pausar cada una o cambiar su período sin afectar las escrituras FC05/FC06.
 - `config/default.yaml`: **solo mapa Modbus y estructura de señales**: tablas, tags, filas, tipos, marcas de inyección y, cuando SCA la informa, variable interna `mapped_value`.
 
@@ -110,9 +110,9 @@ curl -X PUT https://comunicaciones.servicoop.com.ar/moto-tester/api/modbus-polli
 
 FC01..FC04 gobiernan exclusivamente lecturas. Las escrituras de coils FC05 y registros FC06 continúan dependiendo de `runtime/write_mode.txt`.
 
-### Modo de escritura temporal con interlock
+### Modo de escritura temporal
 
-Antes de habilitar escritura, un operador con acceso al volumen local debe escribir exactamente `armed` en `runtime/write_interlock.txt`. La API requiere la sesión protegida del gateway y la habilitación vence luego de `WRITE_ENABLE_LEASE_SECONDS` (900 segundos en el ejemplo).
+La API requiere la sesión protegida del gateway y la habilitación vence luego de `WRITE_ENABLE_LEASE_SECONDS` (900 segundos en el ejemplo). No existe un interlock basado en archivos: el operador autenticado habilita o deshabilita la escritura desde la interfaz web.
 
 ```bash
 curl https://comunicaciones.servicoop.com.ar/moto-tester/api/write-mode
@@ -244,8 +244,8 @@ la imagen final recibe únicamente los archivos estáticos resultantes.
 ## Seguridad operativa
 
 - El contenedor siempre inicia en `read_only`, incluso si el archivo persistido tenía otro valor.
-- Para habilitar escritura deben coincidir tres controles: sesión protegida válida, `runtime/write_interlock.txt = armed` y lease vigente.
-- El lease vence automáticamente y cualquier interlock ausente, inválido o desarmado produce cierre en `read_only`.
+- Para habilitar escritura deben coincidir dos controles: sesión protegida válida y lease vigente.
+- El lease vence automáticamente y produce cierre en `read_only`.
 - Las llamadas internas del `field-emulator` usan un token propio; no pueden habilitar el modo de escritura ni modificar otros controles.
 - Los lotes se validan completos —tags, permisos, tipos, rangos y capacidad— antes de encolar, evitando escrituras parciales.
 - Las peticiones de comando se registran en eventos para trazabilidad.

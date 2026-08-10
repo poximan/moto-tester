@@ -59,6 +59,7 @@
 
 8. Criterios obligatorios para Docker y portabilidad Windows-Linux
 - Disenar la imagen final para Linux aunque el desarrollo se realice en Windows: respetar mayusculas y minusculas, rutas POSIX, permisos, propietarios y finales de linea LF.
+- No propagar puertos internos de contenedor en redirects ni encabezados de origen publico; el gateway debe normalizar host, esquema y puerto externos.
 - Ejecutar procesos de aplicacion con un usuario sin privilegios y con UID/GID numericos estables. Usar 1000:1000 por defecto, salvo que la plataforma de despliegue exija otros valores.
 - Si una imagen oficial, como PostgreSQL, necesita iniciar con privilegios para preparar volumenes y luego reduce privilegios mediante su entrypoint, no sobrescribir ese flujo sin necesidad; verificarlo y documentar la excepcion.
 - En imagenes Debian o Ubuntu, usar como referencia:

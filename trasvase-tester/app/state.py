@@ -8,7 +8,7 @@ from typing import Any, Literal
 
 from .config import AppConfig, Signal
 from .polling_control import PollingControlStore
-from .write_mode import WriteModeStore
+from .injection_mode import InjectionModeStore
 
 Quality = Literal["unknown", "good", "stale", "error", "local"]
 WriteKind = Literal["coil", "holding_register"]
@@ -51,11 +51,11 @@ class RuntimeState:
     def __init__(
         self,
         config: AppConfig,
-        write_mode: WriteModeStore,
+        injection_mode: InjectionModeStore,
         polling_control: PollingControlStore,
     ):
         self.config = config
-        self.write_mode = write_mode
+        self.injection_mode = injection_mode
         self.polling_control = polling_control
         self._lock = Lock()
         self._values: dict[str, SignalValue] = {
@@ -183,41 +183,76 @@ class RuntimeState:
         validated = {tag: self._validate_write(tag, value) for tag, value in values.items()}
         if not validated:
             raise ValueError("No se informaron escrituras")
+        injection_tags = [tag for tag in validated if self.config.signals_by_tag[tag].facade]
+        if injection_tags:
+            joined = ", ".join(injection_tags)
+            raise PermissionError(f"Los tags de inyeccion {joined} deben usar /api/injection")
+        return self._enqueue_validated_writes(validated, source)
 
+    def enqueue_injections(
+        self,
+        values: dict[str, Any],
+        source: str = "web",
+    ) -> dict[str, dict[str, Any]]:
+        validated = {tag: self._validate_write(tag, value) for tag, value in values.items()}
+        if not validated:
+            raise ValueError("No se informaron inyecciones")
+        invalid_tags = [tag for tag in validated if not self.config.signals_by_tag[tag].facade]
+        if invalid_tags:
+            joined = ", ".join(invalid_tags)
+            raise PermissionError(f"Los tags {joined} no pertenecen al area de inyeccion y*")
+
+        mode_snapshot = self.injection_mode.snapshot()
+        if not bool(mode_snapshot["enabled"]):
+            return self._record_disabled_injections(validated, source, mode_snapshot["mode"])
+        return self._enqueue_validated_writes(validated, source)
+
+    def _record_disabled_injections(
+        self,
+        validated: dict[str, bool | int],
+        source: str,
+        mode: str,
+    ) -> dict[str, dict[str, Any]]:
         now = time.time()
-        mode_snapshot = self.write_mode.snapshot()
         with self._lock:
             results: dict[str, dict[str, Any]] = {}
-            if not bool(mode_snapshot["write_enabled"]):
-                for tag, value in validated.items():
-                    self._local_commands[tag] = {"value": value, "source": source, "created_at": now}
-                    item = self._values[tag]
-                    item.value = value
-                    item.quality = "local"
-                    item.updated_at = now
-                    item.error = f"write_mode={mode_snapshot['mode']}: comando no escrito en PLC"
-                    self._events.appendleft(
-                        {
-                            "ts": now,
-                            "type": "command_local",
-                            "level": "warning",
-                            "message": f"Comando {tag}={value} registrado localmente; modo {mode_snapshot['mode']}",
-                            "tag": tag,
-                            "value": value,
-                            "source": source,
-                        }
-                    )
-                    results[tag] = {
-                        "queued": False,
-                        "written": False,
-                        "reason": f"write_mode={mode_snapshot['mode']}",
+            for tag, value in validated.items():
+                self._local_commands[tag] = {"value": value, "source": source, "created_at": now}
+                item = self._values[tag]
+                item.value = value
+                item.quality = "local"
+                item.updated_at = now
+                item.error = f"injection_mode={mode}: inyeccion no escrita en PLC"
+                self._events.appendleft(
+                    {
+                        "ts": now,
+                        "type": "injection_disabled",
+                        "level": "warning",
+                        "message": f"Inyeccion {tag}={value} omitida; modo {mode}",
+                        "tag": tag,
+                        "value": value,
+                        "source": source,
                     }
-                return results
+                )
+                results[tag] = {
+                    "queued": False,
+                    "written": False,
+                    "reason": f"injection_mode={mode}",
+                }
+            return results
 
+    def _enqueue_validated_writes(
+        self,
+        validated: dict[str, bool | int],
+        source: str,
+    ) -> dict[str, dict[str, Any]]:
+        now = time.time()
+        with self._lock:
             queue_capacity = self._write_queue.maxlen or 0
             if len(self._write_queue) + len(validated) > queue_capacity:
                 raise BufferError("Cola de escrituras completa; no se encolo ningun comando")
 
+            results: dict[str, dict[str, Any]] = {}
             for tag, value in validated.items():
                 self._local_commands[tag] = {"value": value, "source": source, "created_at": now}
                 self._write_queue.append(WriteRequest(tag=tag, value=value, source=source, created_at=now))
@@ -254,18 +289,15 @@ class RuntimeState:
         with self._lock:
             return bool(self._write_queue)
 
-    def writes_enabled(self) -> bool:
-        return self.write_mode.is_write_enabled()
+    def injection_mode_snapshot(self) -> dict[str, Any]:
+        return self.injection_mode.snapshot()
 
-    def write_mode_snapshot(self) -> dict[str, Any]:
-        return self.write_mode.snapshot()
-
-    def set_write_mode(self, mode: str, source: str = "web") -> dict[str, Any]:
-        snapshot = self.write_mode.set_mode(mode)
+    def set_injection_mode(self, mode: str, source: str = "web") -> dict[str, Any]:
+        snapshot = self.injection_mode.set_mode(mode)
         self.add_event(
-            "write_mode",
-            f"Modo de escritura cambiado a {snapshot['mode']}",
-            level="warning" if snapshot["write_enabled"] else "info",
+            "injection_mode",
+            f"Modo de inyeccion y* cambiado a {snapshot['mode']}",
+            level="warning" if snapshot["enabled"] else "info",
             source=source,
         )
         return snapshot
@@ -340,13 +372,13 @@ class RuntimeState:
             if updated_at and now - updated_at > signal_stale_s and item.get("quality") == "good":
                 item["quality"] = "stale"
 
-        write_mode = self.write_mode.snapshot()
+        injection_mode = self.injection_mode.snapshot()
 
         return {
             "project": self.config.project,
             "timestamp": now,
             "connection": connection,
-            "write_mode": write_mode,
+            "injection_mode": injection_mode,
             "modbus_polling": polling_control,
             "controller": {
                 "host": self.config.controller.host,

@@ -23,11 +23,11 @@ from .models import (
     GenericWriteBody,
     PollingControlBody,
     PumpCommandBody,
-    WriteModeBody,
+    InjectionModeBody,
 )
 from .polling_control import PollingControlStore
 from .state import RuntimeState
-from .write_mode import WriteModeStore
+from .injection_mode import InjectionModeStore
 from .logging_utils import configure_file_logger, log_dir, tail_file
 
 APP_DIR = Path(__file__).resolve().parent
@@ -35,16 +35,15 @@ FRONTEND_DIR = APP_DIR.parent / "frontend"
 LOGGER = configure_file_logger("trasvase.web", "trasvase-tester.log")
 
 config: AppConfig = load_config()
-write_mode = WriteModeStore(
-    interlock_path=config.runtime.write_interlock_file,
-    lease_seconds=config.runtime.write_enable_lease_seconds,
+injection_mode = InjectionModeStore(
+    lease_seconds=config.runtime.injection_enable_lease_seconds,
 )
 request_authenticator = RequestAuthenticator(
     config.runtime.edge_auth_verify_url,
     config.runtime.internal_emulator_token,
 )
 polling_control = PollingControlStore(default_sample_rate_ms=config.polling.interval_ms)
-state = RuntimeState(config, write_mode, polling_control)
+state = RuntimeState(config, injection_mode, polling_control)
 poller: ModbusPoller | SimulationPoller
 if config.runtime.simulation_mode:
     poller = SimulationPoller(config, state)
@@ -133,8 +132,8 @@ def health() -> dict[str, Any]:
         "ok": True,
         "connected": snap["connection"].get("connected", False),
         "mode": snap["connection"].get("mode"),
-        "write_mode": snap["write_mode"].get("mode"),
-        "write_enabled": snap["write_mode"].get("write_enabled"),
+        "injection_mode": snap["injection_mode"].get("mode"),
+        "injection_enabled": snap["injection_mode"].get("enabled"),
         "modbus_polling": snap["modbus_polling"],
         "last_error": snap["connection"].get("last_error"),
     }
@@ -175,7 +174,7 @@ def api_config() -> dict[str, Any]:
             "max_stale_ms": config.polling.max_stale_ms,
         },
         "addressing_mode": config.addressing_mode,
-        "write_mode": state.write_mode_snapshot(),
+        "injection_mode": state.injection_mode_snapshot(),
         "modbus_polling": state.polling_control_snapshot(),
         "field_emulator_url": config.runtime.field_emulator_url,
         "tables": {
@@ -226,7 +225,7 @@ def diagnostics() -> dict[str, Any]:
     snap = state.snapshot()
     return {
         "connection": snap["connection"],
-        "write_mode": snap["write_mode"],
+        "injection_mode": snap["injection_mode"],
         "modbus_polling": snap["modbus_polling"],
         "controller": snap["controller"],
         "log_dir": str(log_dir()),
@@ -270,21 +269,19 @@ def logs_read(log_name: str, lines: int = 300) -> dict[str, Any]:
     }
 
 
-@app.get("/api/write-mode")
-def get_write_mode() -> dict[str, Any]:
-    return state.write_mode_snapshot()
+@app.get("/api/injection-mode")
+def get_injection_mode() -> dict[str, Any]:
+    return state.injection_mode_snapshot()
 
 
-@app.put("/api/write-mode")
-def set_write_mode(
-    body: WriteModeBody,
+@app.put("/api/injection-mode")
+def set_injection_mode(
+    body: InjectionModeBody,
     _authorized: None = Depends(require_operator),
 ) -> dict[str, Any]:
-    LOGGER.warning("write_mode request mode=%s source=%s", body.mode, body.source)
+    LOGGER.warning("injection_mode request mode=%s source=%s", body.mode, body.source)
     try:
-        snapshot = state.set_write_mode(body.mode, source=body.source)
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
+        snapshot = state.set_injection_mode(body.mode, source=body.source)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"ok": True, **snapshot}
@@ -390,7 +387,7 @@ def _apply_injection(body: FacadeBody) -> dict[str, Any]:
         if not signal.writable or not signal.facade:
             raise HTTPException(status_code=403, detail=f"{tag} no pertenece a inyección escribible")
     try:
-        written = state.enqueue_writes(body.values, source=body.source)
+        written = state.enqueue_injections(body.values, source=body.source)
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except (BufferError, ValueError) as exc:
