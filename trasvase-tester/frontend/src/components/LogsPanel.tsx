@@ -1,5 +1,5 @@
 import { Button, Card } from "@servicoop/frontend-foundation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { TrasvaseApiClient } from "../TrasvaseApiClient";
 import type { LogIndex } from "../TrasvaseModels";
@@ -12,10 +12,11 @@ export function LogsPanel({ client, logs }: LogsPanelProps) {
   const [lineCount, setLineCount] = useState(300);
   const [content, setContent] = useState("Sin logs cargados.");
   const [meta, setMeta] = useState(`${logs.files.length} log(s) · ${logs.log_dir}`);
+  const outputRef = useRef<HTMLPreElement>(null);
 
-  const loadLog = async () => {
+  const loadLog = async (name = selected, lines = lineCount) => {
     try {
-      const result = await client.getLog(selected, lineCount);
+      const result = await client.getLog(name, lines);
       setContent(result.lines.length > 0 ? result.lines.join("\n") : `Sin líneas para ${result.filename}`);
       setMeta(`${result.filename} · ${result.exists ? `${result.lines.length} líneas` : "no existe"}`);
     } catch (error) {
@@ -31,16 +32,23 @@ export function LogsPanel({ client, logs }: LogsPanelProps) {
     }
   };
   useEffect(() => { if (logs.files.length > 0) void loadLog(); }, []);
+  useEffect(() => {
+    if (outputRef.current) outputRef.current.scrollTop = outputRef.current.scrollHeight;
+  }, [content]);
 
   return (
     <Card>
       <div className={styles.heading}><div><h2>Diagnóstico y logs</h2><p>Consulta controlada de conexión, lecturas y errores recientes.</p></div><Button onClick={() => void loadDiagnostics()} variant="secondary">Ver diagnóstico</Button></div>
       <div className={styles.toolbar}>
-        <label>Archivo <select onChange={(event) => setSelected(event.target.value)} value={selected}>{logs.files.map((file) => <option key={file.name} value={file.name}>{file.filename} · {file.size_bytes} bytes</option>)}</select></label>
+        <label>Archivo <select onChange={(event) => {
+          const name = event.target.value;
+          setSelected(name);
+          void loadLog(name, lineCount);
+        }} value={selected}>{logs.files.map((file) => <option key={file.name} value={file.name}>{file.filename} · {file.size_bytes} bytes</option>)}</select></label>
         <label>Últimas líneas <input max={5_000} min={20} onChange={(event) => setLineCount(event.target.valueAsNumber)} step={50} type="number" value={lineCount} /></label>
         <Button onClick={() => void loadLog()} variant="ghost">Recargar archivo</Button><span>{meta}</span>
       </div>
-      <pre className={styles.output}>{content}</pre>
+      <pre className={styles.output} ref={outputRef}>{content}</pre>
     </Card>
   );
 }

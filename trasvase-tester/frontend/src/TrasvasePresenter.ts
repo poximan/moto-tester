@@ -38,6 +38,23 @@ export class TrasvasePresenter {
     }[signal?.quality ?? "unknown"] as StatusTone;
   }
 
+  public injectionStatusText(signal: SignalValue | null | undefined): string {
+    if (!signal || signal.quality === "unknown") return "Sin envío";
+    if (signal.quality === "error") return "Error";
+    if (signal.error?.includes("no escrita")) return "No enviado";
+    if (signal.quality === "local" && signal.error === "write queued") return "Pendiente";
+    if (signal.quality === "local") return "Valor inicial";
+    return "Enviado";
+  }
+
+  public injectionStatusTone(signal: SignalValue | null | undefined): StatusTone {
+    if (signal?.quality === "error") return "danger";
+    if (signal?.error?.includes("no escrita")) return "warning";
+    if (signal?.quality === "local" && signal.error === "write queued") return "info";
+    if (signal?.quality === "good" || signal?.quality === "stale") return "success";
+    return "neutral";
+  }
+
   public pumpVisual(pump: PumpSnapshot, connected: boolean): PumpVisual {
     if (!connected) return { image: "gray", label: "Sin conexión", tone: "neutral" };
     if (!this.signalBoolean(pump.ok)) return { image: "red", label: "Falla", tone: "danger" };

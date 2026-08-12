@@ -252,10 +252,6 @@ tables:
       tag: bB1EMar
       mapped_value: iB1EMar
       label: Bomba 1 en marcha
-    - row: 30
-      tag: bB1InE
-      mapped_value: B1InE
-      label: Bomba 1 interlock/enclavamiento
     - row: 31
       tag: bB1Falla
       mapped_value: iB1Falla
@@ -280,10 +276,6 @@ tables:
       tag: bB2EMar
       mapped_value: iB2EMar
       label: Bomba 2 en marcha
-    - row: 41
-      tag: bB2InE
-      mapped_value: B2InE
-      label: Bomba 2 interlock/enclavamiento
     - row: 42
       tag: bB2Falla
       mapped_value: iB2Falla
@@ -308,10 +300,6 @@ tables:
       tag: bB3EMar
       mapped_value: iB3EMar
       label: Bomba 3 en marcha
-    - row: 52
-      tag: bB3InE
-      mapped_value: B3InE
-      label: Bomba 3 interlock/enclavamiento
     - row: 53
       tag: bB3Falla
       mapped_value: iB3Falla
@@ -336,10 +324,6 @@ tables:
       tag: bB4EMar
       mapped_value: iB4EMar
       label: Bomba 4 en marcha
-    - row: 63
-      tag: bB4InE
-      mapped_value: B4InE
-      label: Bomba 4 interlock/enclavamiento
     - row: 64
       tag: bB4Falla
       mapped_value: iB4Falla
@@ -364,10 +348,6 @@ tables:
       tag: bB5EMar
       mapped_value: iB5EMar
       label: Bomba 5 en marcha
-    - row: 74
-      tag: bB5InE
-      mapped_value: B5InE
-      label: Bomba 5 interlock/enclavamiento
     - row: 75
       tag: bB5Falla
       mapped_value: iB5Falla

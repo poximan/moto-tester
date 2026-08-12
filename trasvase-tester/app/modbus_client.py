@@ -421,7 +421,6 @@ class SimulationPoller:
                         f"bB{pump}Aut": pump != 5,
                         f"bB{pump}Ok": not fault,
                         f"bB{pump}EMar": running,
-                        f"bB{pump}InE": False,
                         f"bB{pump}Falla": fault,
                         f"bB{pump}Arndo": running,
                     }

@@ -28,10 +28,8 @@
 .statuses { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: var(--sc-space-2); }
 .polling {
   display: grid;
-  grid-auto-columns: minmax(17rem, 1fr);
-  grid-auto-flow: column;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr));
   gap: var(--sc-space-3);
-  overflow-x: auto;
   padding: var(--sc-space-1) var(--sc-space-1) var(--sc-space-2);
 }
 

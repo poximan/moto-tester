@@ -26,29 +26,36 @@ export function InjectionPanel({ client, config, execute, presenter, snapshot }:
     .filter((signal) => signal.facade)
     .filter((signal) => !filter || `${signal.tag} ${signal.label} ${signal.injects_tag ?? ""}`.toLowerCase().includes(filter.toLowerCase()))
     .sort((left, right) => left.row - right.row);
-  const injectNumber = (signal: SignalDefinition) => {
+  const injectNumber = async (signal: SignalDefinition) => {
     const raw = drafts[signal.tag] ?? String(snapshot.values[signal.tag]?.value ?? "");
     const value = Number(raw);
     if (!Number.isFinite(value)) return;
-    void execute(() => client.inject(signal.tag, value));
+    if (await execute(() => client.inject(signal.tag, value))) {
+      setDrafts((current) => {
+        const next = { ...current };
+        delete next[signal.tag];
+        return next;
+      });
+    }
   };
   const table = (name: "analog_setpoints" | "digital_commands", label: string) => (
     <Card className={styles.window}>
       <h3>{label}</h3>
       <div className={styles.scroll}><table>
-        <thead><tr><th>Fila</th><th>Tag</th><th>Destino</th><th>Valor</th><th>Set</th><th /></tr></thead>
+        <thead><tr><th>Fila</th><th>Tag</th><th>Destino</th><th>Último valor</th><th>Estado</th><th>Set</th><th /></tr></thead>
         <tbody>{signals(name).map((signal) => {
           const value = snapshot.values[signal.tag];
           const digital = name === "digital_commands" || signal.write_kind === "coil";
           return (
             <tr key={signal.tag}>
               <td>{signal.row}</td><td title={signal.label}>{signal.tag}</td><td>{target(signal)}</td>
-              <td><strong>{presenter.signalText(value)}</strong> <StatusBadge tone={presenter.qualityTone(value)}>{value?.quality ?? "unknown"}</StatusBadge></td>
+              <td><strong>{presenter.signalText(value)}</strong></td>
+              <td><span title={value?.error ?? undefined}><StatusBadge tone={presenter.injectionStatusTone(value)}>{presenter.injectionStatusText(value)}</StatusBadge></span></td>
               <td>{digital
                 ? <input aria-label={`Inyectar ${signal.tag}`} checked={presenter.signalBoolean(value)} onChange={(event) => void execute(() => client.inject(signal.tag, event.target.checked))} type="checkbox" />
                 : <input aria-label={`Valor ${signal.tag}`} onChange={(event) => setDrafts((current) => ({ ...current, [signal.tag]: event.target.value }))} step={1} type="number" value={drafts[signal.tag] ?? String(value?.value ?? "")} />}
               </td>
-              <td>{!digital && <Button onClick={() => injectNumber(signal)} variant="ghost">Aplicar</Button>}</td>
+              <td>{!digital && <Button onClick={() => void injectNumber(signal)} variant="ghost">Aplicar</Button>}</td>
             </tr>
           );
         })}</tbody>
@@ -57,7 +64,7 @@ export function InjectionPanel({ client, config, execute, presenter, snapshot }:
   );
   return (
     <section>
-      <div className={styles.heading}><div><h2>Inyecciones</h2><p>Entradas de emulación separadas del mapa de producción.</p></div><input onChange={(event) => setFilter(event.target.value)} placeholder="Filtrar y*" type="search" value={filter} /></div>
+      <div className={styles.heading}><div><h2>Inyecciones</h2><p>Se muestra el último valor solicitado y si fue enviado al PLC; esta zona no es realimentación.</p></div><input onChange={(event) => setFilter(event.target.value)} placeholder="Filtrar y*" type="search" value={filter} /></div>
       <div className={styles.grid}>{table("analog_setpoints", "Inyección lectura AN")}{table("digital_commands", "Inyección lectura DI")}</div>
     </section>
   );

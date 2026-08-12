@@ -3,7 +3,7 @@
   grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: var(--sc-space-2);
-  min-width: 17rem;
+  min-width: 0;
   padding: var(--sc-space-2);
   border: 1px solid var(--sc-color-border);
   border-radius: var(--sc-radius-md);
@@ -19,10 +19,15 @@
 }
 
 .control input {
-  width: 5.5rem;
+  width: min(5.5rem, 100%);
   padding: var(--sc-space-1) var(--sc-space-2);
   border: 1px solid var(--sc-color-border);
   border-radius: var(--sc-radius-sm);
   background: var(--sc-color-background);
   color: var(--sc-color-text);
+}
+
+@media (max-width: 28rem) {
+  .control { grid-template-columns: 1fr auto; }
+  .control label { grid-column: 1 / -1; justify-content: space-between; }
 }

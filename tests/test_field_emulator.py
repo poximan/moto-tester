@@ -56,10 +56,24 @@ def test_generate_emar_is_persisted_for_all_web_clients(monkeypatch, tmp_path):
     monkeypatch.setenv("FIELD_EMULATOR_STATE_FILE", str(state_path))
 
     emulator = FieldEmulator()
+    posts = []
+    emulator._get_json = lambda path: {
+        "injection_mode": {"enabled": True},
+        "values": {"bB3Arndo": {"value": True}},
+    }
+    emulator._post_json = lambda path, payload: posts.append((path, payload)) or {
+        "results": {"yB3EMar": {"queued": True, "written": False}},
+    }
     emulator.set_generate_emar(3, True)
 
     reloaded = FieldEmulator()
     assert reloaded.snapshot()["generate_emar"]["3"] is True
+    assert posts == [
+        (
+            "/api/injection",
+            {"values": {"yB3EMar": True}, "source": "field-emulator-generate-emar"},
+        )
+    ]
 
 
 def test_field_emulator_initializes_from_genuine_feedback_not_y_memory(monkeypatch):

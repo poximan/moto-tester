@@ -25,7 +25,7 @@ Modo equivalente a conectar un SCADA de lectura:
 
 - Lee entradas analógicas reales `30001..30026` con FC04.
 - Lee consignas analógicas reales `42049..42070` con FC03. La zona `y*` no se lee; solo se escribe para inyección y empieza en fila 27.
-- Lee entradas digitales reales `14097..14173` con FC02. Conserva `bB#InE` e incluye `bB#Arndo` al final de cada paquete de bomba.
+- Lee entradas digitales reales `14097..14173` con FC02 e incluye `bB#Arndo` al final de cada paquete de bomba.
 - Lee comandos digitales reales `6145..6162` con FC01. La zona `y*` no se lee; solo se escribe para inyección y empieza en fila 23.
 - Las cuatro lecturas se planifican por separado y con inicio desfasado para no concentrar una ráfaga sobre el controlador. Un error de una FC queda aislado y no descarta las lecturas correctas de las demás.
 - La web permite editar consignas `g*` y generar comandos `c*`; ambos se encolan siempre para escritura al PLC. Las cuatro tablas SCA visibles muestran exclusivamente tags de producción, con filas internas vacías para respetar la distribución real. La zona `y*` no aparece en estas cuatro tablas; queda en las dos tablas de inyección y es la única sujeta a `runtime/injection_mode.txt`. La actualización de estado en la web llega por WebSocket (`/ws/stream`) y se aplica incrementalmente sobre celdas ya existentes; no hay polling `fetch` periódico del snapshot ni reconstrucción de tablas durante el ciclo de actualización.
@@ -240,6 +240,9 @@ proceso, bombas, tablas Modbus e inyecciones permanecen dentro de este producto.
 El frontend usa los contratos HTTP y WebSocket existentes. No accede al estado
 Python ni a archivos runtime. El build Vite ocurre en una etapa Docker separada y
 la imagen final recibe únicamente los archivos estáticos resultantes.
+
+El mapa localizable de presentacion, API, servicio y fuentes operativas de cada
+vista esta en [`docs/VISTAS.md`](docs/VISTAS.md).
 
 ## Seguridad operativa
 

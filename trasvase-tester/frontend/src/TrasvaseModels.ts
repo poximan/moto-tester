@@ -82,7 +82,6 @@ export interface PumpSnapshot {
   ok: SignalValue | null;
   running: SignalValue | null;
   arr: SignalValue | null;
-  interlock: SignalValue | null;
   fault: SignalValue | null;
   hours: SignalValue | null;
   cmd_aut: SignalValue | null;

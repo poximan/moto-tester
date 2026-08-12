@@ -1,4 +1,4 @@
-.card { display: flex; flex-direction: column; gap: var(--sc-space-3); }
+.card { display: flex; flex-direction: column; gap: var(--sc-space-3); padding: 8px; }
 .heading { display: flex; justify-content: space-between; align-items: center; gap: var(--sc-space-2); }
 .heading h3 { margin: 0; }
 .image { align-self: center; width: 7rem; height: 7rem; object-fit: contain; }

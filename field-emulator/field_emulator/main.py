@@ -219,9 +219,34 @@ class FieldEmulator:
         if pump_id < 1 or pump_id > 5:
             raise ValueError("pump_id debe estar entre 1 y 5")
         LOGGER.info("generate EMar request pump=%s enabled=%s", pump_id, enabled)
+
+        tag = f"yB{pump_id}EMar"
+        immediate_value: bool | None = None
+        immediate_result: dict[str, Any] | None = None
+        if enabled:
+            snap = self._get_json("/api/snapshot")
+            if not bool(snap.get("injection_mode", {}).get("enabled")):
+                raise RuntimeError("No se puede generar EMar mientras la inyección y* está deshabilitada")
+            immediate_value = _bit(snap.get("values", {}).get(f"bB{pump_id}Arndo"))
+            immediate_result = self._post_json(
+                "/api/injection",
+                {"values": {tag: immediate_value}, "source": "field-emulator-generate-emar"},
+            )
+            write_state = immediate_result.get("results", {}).get(tag, {})
+            if not bool(write_state.get("queued") or write_state.get("written")):
+                reason = write_state.get("reason", "la API no confirmó la escritura")
+                raise RuntimeError(f"No se pudo escribir {tag}: {reason}")
+
         with self._lock:
             self.state["generate_emar"][str(pump_id)] = enabled
-            self.state["last_emar_values"].pop(f"yB{pump_id}EMar", None)
+            if enabled:
+                self.state["last_emar_values"][tag] = immediate_value
+                self.state["last_write_values"] = {**self.state["last_write_values"], tag: immediate_value}
+                self.state["last_write_results"] = {**self.state.get("last_write_results", {}), tag: immediate_result}
+                self.state["last_write_at"] = time.time()
+                self.state["last_error"] = None
+            else:
+                self.state["last_emar_values"].pop(tag, None)
             self.state["updated_at"] = time.time()
             self._save_state_file()
             return self.snapshot()
@@ -416,3 +441,10 @@ def generate_emar(pump_id: int, body: PumpEmarBody) -> dict[str, Any]:
         return emulator.set_generate_emar(pump_id, body.enabled)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except (urllib.error.URLError, TimeoutError, ConnectionRefusedError) as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"No se pudo comunicar con trasvase-tester para escribir yB{pump_id}EMar: {exc}",
+        ) from exc

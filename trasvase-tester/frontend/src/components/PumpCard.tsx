@@ -34,7 +34,7 @@ export function PumpCard({ client, connected, execute, generateEmar, presenter, 
       <div className={styles.indicators}>
         {indicator("RTU", rtu)}{indicator("Automático", presenter.signalBoolean(pump.aut))}
         {indicator("Salud", presenter.signalBoolean(pump.ok))}{indicator("EMar", presenter.signalBoolean(pump.running))}
-        {indicator("Interlock", presenter.signalBoolean(pump.interlock), true)}{indicator("Falla", presenter.signalBoolean(pump.fault), true)}
+        {indicator("Falla", presenter.signalBoolean(pump.fault), true)}
       </div>
       <div className={styles.options}>
         <label><input checked={generateEmar} onChange={(event) => void execute(() => client.setGenerateEmar(pump.id, event.target.checked))} type="checkbox" /> generar EMar</label>

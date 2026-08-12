@@ -70,8 +70,11 @@ def test_exchange_map_matches_the_four_sca_tables():
         "bCAspRb": 14, "bCAspAt": 15, "bCAspBj": 16,
         "bCAspNvAtP": 17, "bCAspNvBjP": 18,
     }
+    pump_signal_offsets = (
+        (0, "RTU"), (1, "Aut"), (2, "Ok"), (3, "EMar"), (5, "Falla"), (6, "Arndo"),
+    )
     for pump, start in enumerate((26, 37, 48, 59, 70), start=1):
-        for offset, suffix in enumerate(("RTU", "Aut", "Ok", "EMar", "InE", "Falla", "Arndo")):
+        for offset, suffix in pump_signal_offsets:
             expected_digital_rows[f"bB{pump}{suffix}"] = start + offset
     expected_rows["digital_reads"] = expected_digital_rows
 
@@ -94,7 +97,6 @@ def test_exchange_map_matches_the_four_sca_tables():
             f"bB{pump}Aut": f"B{pump}Aut",
             f"bB{pump}Ok": f"B{pump}Ok",
             f"bB{pump}EMar": f"iB{pump}EMar",
-            f"bB{pump}InE": f"B{pump}InE",
             f"bB{pump}Falla": f"iB{pump}Falla",
             f"bB{pump}Arndo": f"mB{pump}Arr",
         })
@@ -269,11 +271,11 @@ def test_removed_exchange_tags_are_not_defined():
     removed = {
         "yResRb", "yResAt", "yResBj",
         "yCAspRb", "yCAspAt", "yCAspBj",
-        "yB1Aut", "yB1Ok", "yB1InE",
-        "yB2Aut", "yB2Ok", "yB2InE",
-        "yB3Aut", "yB3Ok", "yB3InE",
-        "yB4Aut", "yB4Ok", "yB4InE",
-        "yB5Aut", "yB5Ok", "yB5InE",
+        "yB1Aut", "yB1Ok",
+        "yB2Aut", "yB2Ok",
+        "yB3Aut", "yB3Ok",
+        "yB4Aut", "yB4Ok",
+        "yB5Aut", "yB5Ok",
         "yB1Bypass", "yB2Bypass", "yB3Bypass", "yB4Bypass", "yB5Bypass",
         "bB1Bypass", "bB2Bypass", "bB3Bypass", "bB4Bypass", "bB5Bypass",
         "bB1Arr", "bB2Arr", "bB3Arr", "bB4Arr", "bB5Arr",
@@ -292,9 +294,7 @@ def test_injection_targets_are_explicit():
     assert cfg.signals_by_tag["yRFF"].injects_tag == "bRFF"
     assert cfg.signals_by_tag["yRFF"].injection_group == "digital_reads"
     assert cfg.signals_by_tag["yB5Falla"].injects_tag == "bB5Falla"
-    assert cfg.signals_by_tag["bB1InE"].row == 30
     assert cfg.signals_by_tag["bB1Arndo"].row == 32
-    assert cfg.signals_by_tag["bB5InE"].row == 74
     assert cfg.signals_by_tag["bB5Arndo"].row == 76
 
 
@@ -387,7 +387,7 @@ def test_g_setpoints_are_always_editable_from_react():
 def test_front_uses_websocket_stream_and_does_not_poll_refresh_snapshot():
     stream = (SERVICE_FRONTEND / "src/TrasvaseStreamClient.ts").read_text(encoding="utf-8")
     client = (SERVICE_FRONTEND / "src/TrasvaseApiClient.ts").read_text(encoding="utf-8")
-    main = (SERVICE_APP / "main.py").read_text(encoding="utf-8")
+    api = (SERVICE_APP / "capabilities/diagnostics/diagnostics_api.py").read_text(encoding="utf-8")
 
     assert '"ws/stream"' in client
     assert '@app.websocket("/ws/stream")' in main
@@ -443,12 +443,12 @@ def test_pump_cards_include_arr_emar_generation_and_specific_pills():
 def test_logs_ui_and_api_are_present():
     panel = (SERVICE_FRONTEND / "src/components/LogsPanel.tsx").read_text(encoding="utf-8")
     client = (SERVICE_FRONTEND / "src/TrasvaseApiClient.ts").read_text(encoding="utf-8")
-    main = (SERVICE_APP / "main.py").read_text(encoding="utf-8")
+    api = (SERVICE_APP / "capabilities/diagnostics/diagnostics_api.py").read_text(encoding="utf-8")
     assert "Diagnóstico y logs" in panel
     assert '"api/logs"' in client
-    assert "@app.get(\"/api/logs\")" in main
-    assert "@app.get(\"/api/logs/{log_name}\")" in main
-    assert "@app.get(\"/api/diagnostics\")" in main
+    assert '"/api/logs"' in api
+    assert '"/api/logs/{log_name}"' in api
+    assert '"/api/diagnostics"' in api
     assert "Ver diagnóstico" in panel
     assert "Recargar archivo" in panel
 
@@ -457,15 +457,15 @@ def test_ui_controls_each_read_function_code_and_sample_rate():
     header = (SERVICE_FRONTEND / "src/components/StatusHeader.tsx").read_text(encoding="utf-8")
     control = (SERVICE_FRONTEND / "src/components/PollingControl.tsx").read_text(encoding="utf-8")
     client = (SERVICE_FRONTEND / "src/TrasvaseApiClient.ts").read_text(encoding="utf-8")
-    main = (SERVICE_APP / "main.py").read_text(encoding="utf-8")
+    api = (SERVICE_APP / "capabilities/overview/overview_api.py").read_text(encoding="utf-8")
 
     for function_code in ("01", "02", "03", "04"):
         assert f'"{function_code}"' in header
     assert "sample_rate_ms" in control
     assert "3_600_000" in control
     assert "api/modbus-polling" in client
-    assert '@app.get("/api/modbus-polling")' in main
-    assert '@app.put("/api/modbus-polling/{function_code}")' in main
+    assert '"/api/modbus-polling"' in api
+    assert '"/api/modbus-polling/{function_code}"' in api
 
 
 def test_sca_window_title_shows_modbus_details():

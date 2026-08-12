@@ -403,7 +403,6 @@ class RuntimeState:
                     "ok": values.get(f"{prefix}Ok"),
                     "running": values.get(f"{prefix}EMar"),
                     "arr": values.get(f"{prefix}Arndo"),
-                    "interlock": values.get(f"{prefix}InE"),
                     "fault": values.get(f"{prefix}Falla"),
                     "hours": values.get(f"eB{pump}Hs"),
                     "cmd_aut": values.get(f"cB{pump}Aut"),

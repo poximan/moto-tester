@@ -10,7 +10,7 @@
 .scroll th { position: sticky; top: 0; z-index: 1; background: var(--sc-color-surface-raised); color: var(--sc-color-text-muted); text-align: left; }
 .scroll th, .scroll td { padding: var(--sc-space-2); border-bottom: 1px solid var(--sc-color-border); }
 .scroll td:nth-child(1), .scroll td:nth-child(2) { font-family: var(--sc-font-mono); }
-.scroll td:nth-child(4) { white-space: nowrap; }
+.scroll td:nth-child(4), .scroll td:nth-child(5) { white-space: nowrap; }
 .scroll input[type="number"] { width: 7rem; }
 .scroll input[type="checkbox"] { width: 1.25rem; height: 1.25rem; accent-color: var(--sc-color-primary); }
 @media (max-width: 70rem) { .grid { grid-template-columns: 1fr; } }

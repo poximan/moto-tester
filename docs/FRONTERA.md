@@ -63,7 +63,7 @@ El contenedor `field-emulator` escribe inicialmente `yNvCamAsp` y `yNvRes` usand
 
 ## `bB#Arndo` y generación opcional de `yB#EMar`
 
-La lectura digital oficial de cada bomba conserva `bB#InE` e incluye `bB#Arndo` al final del paquete. El check web `generar EMar` modifica una preferencia central del `field-emulator`, persistida en `runtime/field_emulator_state.json` y compartida por WebSocket con todos los clientes. El navegador no conserva ni ejecuta esta decisión. El servicio automatiza la escritura de `yB#EMar` hacia el controlador siguiendo `bB#Arndo`; el estado visible de proceso sigue saliendo de `bB#EMar` y del resto de lecturas genuinas.
+La lectura digital oficial de cada bomba incluye `bB#Arndo` al final del paquete. El check web `generar EMar` modifica una preferencia central del `field-emulator`, persistida en `runtime/field_emulator_state.json` y compartida por WebSocket con todos los clientes. Al activarlo, el servicio escribe de inmediato `yB#EMar` con el valor actual de `bB#Arndo` y luego mantiene esa correspondencia automáticamente. Si la inyección `y*` está deshabilitada, la activación se rechaza con una explicación y no se guarda una preferencia inoperante. El estado visible de proceso sigue saliendo de `bB#EMar` y del resto de lecturas genuinas.
 
 
 ## Logs

@@ -80,16 +80,16 @@ Las tablas de producción se renderizan con columnas mínimas `fila`, `Name` y `
 
 ## Actualización de lecturas digitales de bombas
 
-Cada paquete de bomba conserva `bB#InE` e incorpora `bB#Arndo` como último bit del grupo. Este último permite distinguir orden/arranque respecto del feedback de marcha `bB#EMar`:
+Cada paquete de bomba incorpora `bB#Arndo` como último bit del grupo. Este permite distinguir orden/arranque respecto del feedback de marcha `bB#EMar`:
 
-| Bomba | RTU | Aut | Ok | EMar | InE | Falla | Arndo |
-|---:|---:|---:|---:|---:|---:|---:|---:|
-| 1 | 26 | 27 | 28 | 29 | 30 | 31 | 32 |
-| 2 | 37 | 38 | 39 | 40 | 41 | 42 | 43 |
-| 3 | 48 | 49 | 50 | 51 | 52 | 53 | 54 |
-| 4 | 59 | 60 | 61 | 62 | 63 | 64 | 65 |
-| 5 | 70 | 71 | 72 | 73 | 74 | 75 | 76 |
+| Bomba | RTU | Aut | Ok | EMar | Falla | Arndo |
+|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 26 | 27 | 28 | 29 | 31 | 32 |
+| 2 | 37 | 38 | 39 | 40 | 42 | 43 |
+| 3 | 48 | 49 | 50 | 51 | 53 | 54 |
+| 4 | 59 | 60 | 61 | 62 | 64 | 65 |
+| 5 | 70 | 71 | 72 | 73 | 75 | 76 |
 
-El mapa conserva además la variable interna indicada por SCA en la columna `Value`. Para cada bomba la regla es `bB#RTU -> iB#RTU`, `bB#Aut -> B#Aut`, `bB#Ok -> B#Ok`, `bB#EMar -> iB#EMar`, `bB#InE -> B#InE`, `bB#Falla -> iB#Falla` y `bB#Arndo -> mB#Arr`.
+El mapa conserva además la variable interna indicada por SCA en la columna `Value`. Para cada bomba la regla es `bB#RTU -> iB#RTU`, `bB#Aut -> B#Aut`, `bB#Ok -> B#Ok`, `bB#EMar -> iB#EMar`, `bB#Falla -> iB#Falla` y `bB#Arndo -> mB#Arr`.
 
 Las restantes correspondencias son `eNvCamAsp -> iNvCamAsp`, `eNvRes -> iNvRes`, `eTurb -> iTurb`, `eB#Hs -> B#Hs`, `bRFF -> iRFF`, `bResRb -> ResRb`, `bResAt -> ResAt`, `bResBj -> ResBj`, `bResNvAtP -> ResNvAtP`, `bResNvBjP -> ResNvBjP`, `bCAspRb -> CAspRb`, `bCAspAt -> CAspAt`, `bCAspBj -> CAspBj`, `bCAspNvAtP -> CAspNvAtP` y `bCAspNvBjP -> CAspNvBjP`. Se exponen como `mapped_value` en la configuración/API y no reemplazan el valor vivo leído por Modbus.
