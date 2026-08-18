@@ -12,6 +12,10 @@
 .options { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sc-space-3); }
 .options { flex-direction: column; align-items: stretch; }
 .options label { color: var(--sc-color-text-muted); font-size: var(--sc-font-size-sm); }
+.emarModes { margin: 0; padding: var(--sc-space-2); border: 1px solid var(--sc-color-border); border-radius: var(--sc-radius-md); }
+.emarModes legend { padding: 0 var(--sc-space-1); color: var(--sc-color-text-muted); font-size: var(--sc-font-size-sm); }
+.emarOptions { display: flex; flex-wrap: wrap; gap: var(--sc-space-3); }
+.emarOptions label { display: inline-flex; align-items: center; gap: var(--sc-space-1); }
 .commands { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: stretch; gap: var(--sc-space-2); }
 .modeCommand { height: 100%; min-height: 100%; }
 .runCommands { display: grid; grid-template-rows: repeat(2, minmax(0, 1fr)); gap: var(--sc-space-2); }

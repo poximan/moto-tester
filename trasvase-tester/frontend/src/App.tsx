@@ -35,7 +35,7 @@ export function App() {
             />
             <MetricGrid presenter={presenter} snapshot={snapshot} />
             {emulator && <ProcessPanel emulator={emulator} onValves={async (inlet, outlet) => { await execute(() => client.setValves(inlet, outlet)); }} presenter={presenter} snapshot={snapshot} />}
-            <PumpGrid client={client} emulator={emulator} execute={execute} presenter={presenter} snapshot={snapshot} />
+            <PumpGrid client={client} execute={execute} presenter={presenter} snapshot={snapshot} />
             <ProductionTables
               config={config}
               onSetpoint={async (tag, value) => { await execute(() => client.write(tag, value)); }}

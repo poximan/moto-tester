@@ -13,7 +13,7 @@ El tester lee y presenta las cuatro tablas SCA del intercambio de producción:
 
 En la UI, las cuatro tablas SCA muestran solo tags de producción. Se respetan las filas internas vacías del intercambio real, pero no se muestra la zona `y*` dentro de esas cuatro tablas.
 
-Las teclas FC01..FC04 de la cabecera gobiernan únicamente las lecturas y la actualización de pantalla. Cada una nace activa a 2000 ms y conserva su habilitación y período en `runtime/modbus_polling.json`. Las consultas se inician desfasadas y sus errores se registran por separado, de modo que una respuesta inválida no interrumpe las demás tablas. Las escrituras FC05/FC06 son independientes: `g*` y `c*` se escriben siempre, mientras que sólo `y*` depende del modo de inyección.
+Las teclas FC01..FC04 de la cabecera gobiernan únicamente las lecturas y la actualización de pantalla. Cada una nace activa a 2000 ms y conserva su habilitación y período en `runtime/modbus_polling.json`. Las consultas se inician desfasadas y sus errores se registran por separado, de modo que una respuesta inválida no interrumpe las demás tablas. Las escrituras FC05/FC06 son independientes: `g*`, `c*` y el control dedicado `yB#EMar` se escriben siempre; las demás inyecciones `y*` dependen del modo de inyección.
 
 ## Tráfico front-back
 
@@ -39,21 +39,21 @@ Ubicación vigente de inyección:
 
 ## Escritura e inyección
 
-Las consignas `g*` y los comandos `c*` enviados por un operador autenticado se encolan siempre para escritura al PLC. No dependen del polling FC01..FC04 ni de una habilitación adicional.
+Las consignas `g*` y los comandos `c*` enviados por un operador que ingresó desde `edge-platform` se encolan siempre para escritura al PLC. No dependen del polling FC01..FC04 ni de una habilitación adicional.
 
-El modo persistente gobierna exclusivamente las inyecciones `y*`. `runtime/injection_mode.txt` conserva el último estado elegido a través de sesiones web y reinicios:
+El modo persistente gobierna los pedidos genéricos de inyección `y*`. `runtime/injection_mode.txt` conserva el último estado elegido a través de sesiones web y reinicios. El control dedicado `generar EMar` es una excepción explícita y no consulta este modo:
 
 ```text
 disabled
 ```
 
-Omite las inyecciones `y*`. No altera la posibilidad de escribir `g*` o `c*`.
+Omite los pedidos genéricos de inyección `y*`. No altera la posibilidad de escribir `g*`, `c*` o el control dedicado `yB#EMar`.
 
 ```text
 enabled
 ```
 
-Permite escribir exclusivamente los tags de inyección `y*`. El estado no vence ni se reinicia automáticamente; permanece `enabled` hasta que un operador autenticado seleccione `disabled` desde la interfaz web.
+Permite escribir los tags de inyección `y*` por la API genérica. El estado no vence ni se reinicia automáticamente; permanece `enabled` hasta que un operador seleccione `disabled` desde la interfaz web. El ingreso operativo se realiza sin login a través de la ruta pública de `edge-platform`.
 
 
 ## Servicio experto de emulación
@@ -61,9 +61,11 @@ Permite escribir exclusivamente los tags de inyección `y*`. El estado no vence 
 El contenedor `field-emulator` escribe inicialmente `yNvCamAsp` y `yNvRes` usando `POST /api/injection` contra el servicio web. La válvula de ingreso gobierna `yNvCamAsp`; cuanto más abierta, más rápido incrementa el nivel simulado de cámara. La válvula de salida gobierna `yNvRes`; cuanto más abierta, más rápido decrementa el nivel simulado de reserva. Las bombas aportan transferencia cámara → reserva. La salida por defecto está calibrada para que 3 bombas en marcha con válvula de reserva al 50% produzcan balance neutro en la reserva; desde ese punto, la evolución es proporcional a cantidad de bombas y apertura de válvula. Los límites se toman del snapshot: `gCamFn..gCamRb` para cámara y `gResFn..gResSp` para reserva. El dibujo web usa como feedback visible `eNvCamAsp` y `eNvRes`.
 
 
-## `bB#Arndo` y generación opcional de `yB#EMar`
+## Controles compartidos de bomba
 
-La lectura digital oficial de cada bomba incluye `bB#Arndo` al final del paquete. El check web `generar EMar` modifica una preferencia central del `field-emulator`, persistida en `runtime/field_emulator_state.json` y compartida por WebSocket con todos los clientes. Al activarlo, el servicio escribe de inmediato `yB#EMar` con el valor actual de `bB#Arndo` y luego mantiene esa correspondencia automáticamente. Si la inyección `y*` está deshabilitada, la activación se rechaza con una explicación y no se guarda una preferencia inoperante. El estado visible de proceso sigue saliendo de `bB#EMar` y del resto de lecturas genuinas.
+La selectora Tablero/RTU y el grupo de radios `generar EMar` no mantienen estado en el navegador. Sus fuentes de verdad son respectivamente `yB#RTU` y el modo EMar dentro de `RuntimeState`, con respaldo en `runtime/pump_controls.json`; el snapshot y el WebSocket comparten el mismo valor con todos los clientes y el backend lo recupera después de reiniciarse.
+
+Cada cambio de `generar EMar` se encola directamente sobre su tag. **Deshabilitado** impone `yB#EMar=0`, **Forzar** impone `yB#EMar=1` y **Automático** copia `bB#Arndo`: `1` cuando está activo y `0` en caso contrario. El servidor vuelve a escribir los valores persistidos al arrancar y reafirma la salida en cada actualización de `bB#Arndo`; la política no depende del modo general de inyección. La tabla y la API genérica de inyección no permiten modificar `yB#EMar`, evitando una segunda fuente de verdad.
 
 
 ## Logs

@@ -158,7 +158,6 @@ class PollingConfig:
 class RuntimeConfig:
     simulation_mode: bool
     field_emulator_url: str
-    edge_auth_verify_url: str
     internal_emulator_token: str
 
 
@@ -253,7 +252,6 @@ def load_config(path: str | Path | None = None) -> AppConfig:
     runtime = RuntimeConfig(
         simulation_mode=_env_bool("SIMULATION_MODE"),
         field_emulator_url=_env_required("FIELD_EMULATOR_URL"),
-        edge_auth_verify_url=_env_required("EDGE_AUTH_VERIFY_URL"),
         internal_emulator_token=_env_required("INTERNAL_EMULATOR_TOKEN"),
     )
 

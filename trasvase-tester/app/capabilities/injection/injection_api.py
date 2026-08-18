@@ -12,8 +12,8 @@ class InjectionApi:
     def __init__(
         self,
         service: InjectionService,
-        require_operator: Callable[..., None],
-        require_operator_or_emulator: Callable[..., None],
+        require_edge: Callable[..., None],
+        require_edge_or_emulator: Callable[..., None],
     ):
         self.service = service
         self.router = APIRouter()
@@ -26,14 +26,14 @@ class InjectionApi:
             "/api/injection-mode",
             self.set_mode,
             methods=["PUT"],
-            dependencies=[Depends(require_operator)],
+            dependencies=[Depends(require_edge)],
         )
         for path in ("/api/injection", "/api/facade"):
             self.router.add_api_route(
                 path,
                 self.inject,
                 methods=["POST"],
-                dependencies=[Depends(require_operator_or_emulator)],
+                dependencies=[Depends(require_edge_or_emulator)],
             )
 
     def get_mode(self) -> dict[str, Any]:

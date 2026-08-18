@@ -2,7 +2,7 @@ import { Button, Card } from "@servicoop/frontend-foundation";
 
 import type { TrasvaseApiClient } from "../TrasvaseApiClient";
 import { TrasvasePresenter } from "../TrasvasePresenter";
-import type { PumpSnapshot, SignalValue } from "../TrasvaseModels";
+import type { EmarMode, PumpSnapshot, SignalValue } from "../TrasvaseModels";
 import { FixedPositionSelector } from "./FixedPositionSelector";
 import styles from "./PumpCard.module.css";
 
@@ -10,13 +10,18 @@ export interface PumpCardProps {
   client: TrasvaseApiClient;
   connected: boolean;
   execute: (operation: () => Promise<unknown>) => Promise<boolean>;
-  generateEmar: boolean;
   presenter: TrasvasePresenter;
   pump: PumpSnapshot;
   rtuSelection: SignalValue | undefined;
 }
 
-export function PumpCard({ client, connected, execute, generateEmar, presenter, pump, rtuSelection }: PumpCardProps) {
+const emarModes: ReadonlyArray<{ label: string; value: EmarMode }> = [
+  { label: "Deshabilitado", value: "disabled" },
+  { label: "Automático", value: "automatic" },
+  { label: "Forzar", value: "forced" },
+];
+
+export function PumpCard({ client, connected, execute, presenter, pump, rtuSelection }: PumpCardProps) {
   const visual = presenter.pumpVisual(pump, connected);
   const rtu = presenter.signalBoolean(rtuSelection?.value == null ? pump.rtu : rtuSelection);
   const automatic = presenter.signalBoolean(pump.cmd_aut);
@@ -37,7 +42,22 @@ export function PumpCard({ client, connected, execute, generateEmar, presenter, 
         {indicator("Falla", presenter.signalBoolean(pump.fault), true)}
       </div>
       <div className={styles.options}>
-        <label><input checked={generateEmar} onChange={(event) => void execute(() => client.setGenerateEmar(pump.id, event.target.checked))} type="checkbox" /> generar EMar</label>
+        <fieldset className={styles.emarModes}>
+          <legend>generar EMar</legend>
+          <div className={styles.emarOptions}>
+            {emarModes.map((option) => (
+              <label key={option.value}>
+                <input
+                  checked={pump.emar_mode === option.value}
+                  name={`pump-${pump.id}-emar-mode`}
+                  onChange={() => void execute(() => client.setEmarMode(pump.id, option.value))}
+                  type="radio"
+                />
+                {option.label}
+              </label>
+            ))}
+          </div>
+        </fieldset>
         <FixedPositionSelector onChange={(nextRtu) => void execute(() => client.inject(`yB${pump.id}RTU`, nextRtu))} rtu={rtu} />
       </div>
       <div className={styles.commands}>

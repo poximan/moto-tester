@@ -47,6 +47,14 @@ export class TrasvaseContractParser {
     if (!Array.isArray(groups.pumps)) {
       throw new Error("Contrato inválido: snapshot.groups.pumps debe ser una lista");
     }
+    groups.pumps.forEach((value, index) => {
+      const pump = this.requireRecord(value, `snapshot.groups.pumps[${index}]`);
+      this.requireNumber(pump, "id", `snapshot.groups.pumps[${index}]`);
+      const mode = this.requireString(pump, "emar_mode", `snapshot.groups.pumps[${index}]`);
+      if (!["disabled", "automatic", "forced"].includes(mode)) {
+        throw new Error(`Contrato inválido: snapshot.groups.pumps[${index}].emar_mode no es válido`);
+      }
+    });
     return record as unknown as RuntimeSnapshot;
   }
 

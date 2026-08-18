@@ -24,6 +24,7 @@ export function InjectionPanel({ client, config, execute, presenter, snapshot }:
   };
   const signals = (name: string) => (config.tables[name]?.signals ?? [])
     .filter((signal) => signal.facade)
+    .filter((signal) => !/^yB[1-5]EMar$/.test(signal.tag))
     .filter((signal) => !filter || `${signal.tag} ${signal.label} ${signal.injects_tag ?? ""}`.toLowerCase().includes(filter.toLowerCase()))
     .sort((left, right) => left.row - right.row);
   const injectNumber = async (signal: SignalDefinition) => {

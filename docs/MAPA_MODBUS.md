@@ -51,7 +51,7 @@ Cada FC de lectura tiene habilitación y sample rate propios, persistidos en `ru
 
 ## Tags de inyección digital
 
-La primera señal es `yRFF` en fila 23/ref 6168 y la última es `yB5Falla` en fila 42/ref 6187. La tabla digital de inyección contiene `yRFF`, las peras de nivel de reserva/cámara y, por bomba, `RTU`, `EMar` y `Falla`.
+La primera señal es `yRFF` en fila 23/ref 6168 y la última es `yB5Falla` en fila 42/ref 6187. La memoria digital de inyección contiene `yRFF`, las peras de nivel de reserva/cámara y, por bomba, `RTU`, `EMar` y `Falla`. Las posiciones `yB#EMar` no aparecen en la tabla genérica de la UI ni se aceptan por su API: las gobierna exclusivamente el modo EMar del servidor.
 
 | Grupo | Tags y filas |
 |---|---|

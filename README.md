@@ -5,7 +5,7 @@ Tester de frontera para sistema de control de bombas de trasvase 4+1.
 La solución contiene tres componentes dockerizados:
 
 1. **Servidor web**: dashboard para visualizar señales del intercambio, estado de bombas, comandos y dos tablas de inyección.
-2. **Master Modbus/TCP**: cliente que consulta al PLC esclavo Modbus/TCP, escribe siempre las consignas `g*` y comandos `c*` solicitados por un operador autenticado, y condiciona únicamente las inyecciones `y*`. Corre dentro del servicio web en esta entrega.
+2. **Master Modbus/TCP**: cliente que consulta al PLC esclavo Modbus/TCP, escribe siempre las consignas `g*`, los comandos `c*` y el control dedicado `yB#EMar` solicitados por un operador ingresado desde `edge-platform`; condiciona por modo los demás pedidos de inyección `y*`. Corre dentro del servicio web en esta entrega.
 3. **Servicio experto de emulación de campo**: contenedor separado que calcula y escribe `yNvCamAsp` y `yNvRes` a partir de válvulas regulables, niveles límite y bombas en marcha.
 
 ## Fuente de verdad de configuración
@@ -13,7 +13,8 @@ La solución contiene tres componentes dockerizados:
 Hay una separación estricta:
 
 - `.env`: **única fuente de verdad para configuración de despliegue**: PLC, autenticación interna, polling, timeouts, modo simulación y parámetros del servicio experto.
-- `runtime/injection_mode.txt`: última habilitación elegida para las inyecciones `y*`. El valor `enabled` o `disabled` sobrevive a recargas, nuevas sesiones web y reinicios del servicio hasta que un operador autenticado lo cambie. No condiciona consignas `g*` ni comandos `c*`.
+- `runtime/injection_mode.txt`: última habilitación elegida para los pedidos genéricos de inyección `y*`. El valor `enabled` o `disabled` sobrevive a recargas y reinicios del servicio hasta que un operador lo cambie. No condiciona consignas `g*`, comandos `c*` ni el control dedicado `yB#EMar`.
+- `runtime/pump_controls.json`: fuente persistente del modo Tablero/RTU y del modo de generación EMar de cada bomba. El servidor publica este estado común por snapshot y WebSocket a todos los clientes.
 - `runtime/modbus_polling.json`: control persistente e independiente de las lecturas FC01, FC02, FC03 y FC04. Todas nacen activas usando `POLL_INTERVAL_MS` —2000 ms en el `.env.example`—; la botonera de cabecera permite pausar cada una o cambiar su período sin afectar las escrituras FC05/FC06.
 - `config/default.yaml`: **solo mapa Modbus y estructura de señales**: tablas, tags, filas, tipos, marcas de inyección y, cuando SCA la informa, variable interna `mapped_value`.
 
@@ -28,7 +29,7 @@ Modo equivalente a conectar un SCADA de lectura:
 - Lee entradas digitales reales `14097..14173` con FC02 e incluye `bB#Arndo` al final de cada paquete de bomba.
 - Lee comandos digitales reales `6145..6162` con FC01. La zona `y*` no se lee; solo se escribe para inyección y empieza en fila 23.
 - Las cuatro lecturas se planifican por separado y con inicio desfasado para no concentrar una ráfaga sobre el controlador. Un error de una FC queda aislado y no descarta las lecturas correctas de las demás.
-- La web permite editar consignas `g*` y generar comandos `c*`; ambos se encolan siempre para escritura al PLC. Las cuatro tablas SCA visibles muestran exclusivamente tags de producción, con filas internas vacías para respetar la distribución real. La zona `y*` no aparece en estas cuatro tablas; queda en las dos tablas de inyección y es la única sujeta a `runtime/injection_mode.txt`. La actualización de estado en la web llega por WebSocket (`/ws/stream`) y se aplica incrementalmente sobre celdas ya existentes; no hay polling `fetch` periódico del snapshot ni reconstrucción de tablas durante el ciclo de actualización.
+- La web permite editar consignas `g*` y generar comandos `c*`; ambos se encolan siempre para escritura al PLC. Las cuatro tablas SCA visibles muestran exclusivamente tags de producción, con filas internas vacías para respetar la distribución real. La zona `y*` no aparece en estas cuatro tablas y queda en las dos tablas de inyección. Los pedidos genéricos de inyección dependen de `runtime/injection_mode.txt`; el control dedicado `generar EMar` es una excepción explícita y siempre escribe su `yB#EMar`. La actualización de estado en la web llega por WebSocket (`/ws/stream`) y se aplica incrementalmente sobre celdas ya existentes; no hay polling `fetch` periódico del snapshot ni reconstrucción de tablas durante el ciclo de actualización.
 
 La cápsula `Fuente` de la cabecera solo informa de dónde salen los valores mostrados: PLC real con host e ID Modbus, o simulador local. No habilita tráfico ni cambia el modo de inyección.
 
@@ -57,7 +58,7 @@ Editar `.env` y luego ejecutar:
 docker compose up --build
 ```
 
-Abrir la URL pública del gateway e iniciar el modo protegido:
+Abrir la URL pública desde el landing de `edge-platform`; `moto-tester` no requiere login:
 
 ```text
 https://comunicaciones.servicoop.com.ar/moto-tester/
@@ -108,11 +109,11 @@ curl -X PUT https://comunicaciones.servicoop.com.ar/moto-tester/api/modbus-polli
   -d '{"enabled":false,"sample_rate_ms":2000,"source":"operador"}'
 ```
 
-FC01..FC04 gobiernan exclusivamente lecturas y actualización de pantalla. Pausar cualquiera o todas esas funciones no bloquea las escrituras FC05/FC06. Las consignas `g*` y los comandos `c*` se escriben siempre; sólo las inyecciones `y*` dependen de `runtime/injection_mode.txt`.
+FC01..FC04 gobiernan exclusivamente lecturas y actualización de pantalla. Pausar cualquiera o todas esas funciones no bloquea las escrituras FC05/FC06. Las consignas `g*`, los comandos `c*` y el control dedicado `yB#EMar` se escriben siempre; las demás inyecciones `y*` dependen de `runtime/injection_mode.txt`.
 
 ### Modo temporal de inyección `y*`
 
-La API requiere la sesión protegida del gateway. La selección se guarda en `runtime/injection_mode.txt`, no vence y afecta exclusivamente los tags `y*` enviados por el emulador o la tabla de inyección. No existe una llave global de escritura.
+La API recibe el acceso público validado por `edge-gateway`; no requiere una sesión protegida ni credenciales propias. La selección se guarda en `runtime/injection_mode.txt`, no vence y gobierna los pedidos genéricos de inyección enviados por el emulador o la tabla. El endpoint dedicado de `generar EMar` no depende de este modo.
 
 ```bash
 curl https://comunicaciones.servicoop.com.ar/moto-tester/api/injection-mode
@@ -147,7 +148,7 @@ curl -X PUT https://comunicaciones.servicoop.com.ar/moto-tester/api/emulator/val
   -d '{"inlet_open_pct":60,"outlet_open_pct":25}'
 ```
 
-El servicio experto calcula siempre, pero sólo envía efectivamente los tags `y*` cuando `injection_mode` está en `enabled`. Modelo inicial implementado:
+El servicio experto calcula siempre, pero sólo envía efectivamente los niveles `yNvCamAsp` y `yNvRes` cuando `injection_mode` está en `enabled`. Modelo inicial implementado:
 
 - `yNvCamAsp` se incrementa por la válvula de ingreso y se decrementa por bombas en marcha.
 - `yNvRes` se incrementa por bombas en marcha y se decrementa por la válvula de salida. La escala por defecto de salida es proporcional: con 3 bombas en marcha y la válvula de reserva al 50%, el caudal de salida empata el caudal que entra a reserva. Con menos bombas o menor apertura la reserva sube; con más bombas o mayor apertura baja según la diferencia neta.
@@ -164,6 +165,21 @@ curl -X POST https://comunicaciones.servicoop.com.ar/moto-tester/api/pumps/1/com
   -d '{"aut":true,"mr":true,"source":"web"}'
 ```
 
+El control compartido de EMar usa un endpoint dedicado y siempre encola el tag
+`yB#EMar`, incluso si el modo general de inyección está deshabilitado. Los modos
+válidos son `disabled`, `automatic` y `forced`:
+
+```bash
+curl -X PUT https://comunicaciones.servicoop.com.ar/moto-tester/api/pumps/1/emar-mode \
+  -H "Content-Type: application/json" \
+  -d '{"mode":"automatic"}'
+```
+
+`disabled` escribe siempre `yB1EMar=0`; `forced` escribe siempre
+`yB1EMar=1`; `automatic` escribe el valor de `bB1Arndo` (`1` cuando está activo
+y `0` en caso contrario). El servidor vuelve a imponer la salida en cada lectura
+de `bB1Arndo`.
+
 ### Comando directo real por tag
 
 ```bash
@@ -179,8 +195,11 @@ Requiere `runtime/injection_mode.txt = enabled`. Con `disabled`, los pedidos se 
 ```bash
 curl -X POST https://comunicaciones.servicoop.com.ar/moto-tester/api/injection \
   -H "Content-Type: application/json" \
-  -d '{"values":{"yNvCamAsp":2500,"yB1EMar":true},"source":"scada-test"}'
+  -d '{"values":{"yNvCamAsp":2500,"yB1Falla":true},"source":"scada-test"}'
 ```
+
+Los tags `yB#EMar` están reservados al endpoint de modo EMar y no se aceptan por
+la API genérica de inyección.
 
 ## Direccionamiento Modbus
 
@@ -203,7 +222,7 @@ Direcciones relevantes de inyección:
 ```text
 .env.example         Plantilla de parámetros runtime fijos.
 docker-compose.yml   Orquestación de servicios; carga .env y monta runtime/ local.
-runtime/             Estado local generado: injection_mode.txt, modbus_polling.json, logs y estado del emulador.
+runtime/             Estado local generado: injection_mode.txt, modbus_polling.json, pump_controls.json, logs y estado del emulador.
 trasvase-tester/
   Dockerfile         Imagen del servicio web + master Modbus.
   app/               Paquete Python importable del servicio.
@@ -212,7 +231,8 @@ trasvase-tester/
     config.py        Carga de .env + mapa Modbus; valida separación de responsabilidades.
     addressing.py    Conversión Modicon <-> PDU.
     state.py         Estado runtime, snapshots, cola de escritura.
-    injection_mode.py Habilitación temporal exclusiva de y*.
+    pump_control.py  Persistencia central de Tablero/RTU y generar EMar.
+    injection_mode.py Habilitación de los pedidos genéricos de inyección y*.
   frontend/          React + TypeScript estricto + Vite.
     src/             Contratos, clientes y componentes de dominio.
     public/assets/   PNGs de bombas por estado.
@@ -247,17 +267,19 @@ vista esta en [`docs/VISTAS.md`](docs/VISTAS.md).
 ## Seguridad operativa
 
 - El primer arranque crea `runtime/injection_mode.txt` en `disabled`; los siguientes conservan exactamente el último valor elegido.
-- Las consignas `g*` y los comandos `c*` autenticados permanecen escribibles independientemente de ese modo.
-- Sólo una sesión protegida válida puede cambiar el modo de inyección; el valor no vence y permanece hasta el próximo cambio explícito.
+- Las consignas `g*` y los comandos `c*` ingresados desde `edge-platform` permanecen escribibles independientemente de ese modo.
+- Sólo una petición ingresada a través de `edge-platform` puede cambiar el modo de inyección; el valor no vence y permanece hasta el próximo cambio explícito.
 - Las llamadas internas del `field-emulator` usan un token propio; no pueden habilitar el modo de inyección ni modificar otros controles.
 - Los lotes se validan completos —tags, permisos, tipos, rangos y capacidad— antes de encolar, evitando escrituras parciales.
 - Las peticiones de comando se registran en eventos para trazabilidad.
 - Los errores de lectura marcan calidad `error`; si la señal queda vieja, se marca `stale` en el snapshot.
 
 
-## Generación asistida de EMar
+## Control de EMar
 
-En cada card de bomba existe un check `generar EMar`. Su estado pertenece al `field-emulator`, se persiste en `runtime/field_emulator_state.json` y se distribuye a todos los clientes por WebSocket; el navegador no usa `localStorage` ni ejecuta esa automatización. Cuando está activo, el servicio escribe `yB#EMar` siguiendo el bit real `bB#Arndo`: si `bB#Arndo=1` escribe `yB#EMar=1`; si `bB#Arndo=0` escribe `yB#EMar=0`. Si el check está desactivado, no toca `yB#EMar`.
+En cada card de bomba existe un grupo de tres radios `generar EMar`: **Deshabilitado**, **Automático** y **Forzar**. Su única fuente de verdad es el modo guardado por `RuntimeState` y `PumpControlStore`, igual que la selectora Tablero/RTU usa `yB#RTU`. Ambos controles se respaldan en `runtime/pump_controls.json`. El snapshot y el WebSocket distribuyen el mismo estado a todos los clientes; el navegador no conserva una copia en `localStorage` ni mantiene estado operativo propio.
+
+El servidor es el único dueño de `yB#EMar`: **Deshabilitado** escribe `0`, **Forzar** escribe `1` y **Automático** copia `bB#Arndo` (`1` si está activo; `0` en cualquier otro caso). La selección se escribe de inmediato, el valor persistido se vuelve a escribir al arrancar el servidor y la política se reafirma con cada actualización de `bB#Arndo`, independientemente de `runtime/injection_mode.txt`. El tag se excluye de la tabla y de la API genérica de inyección para que ningún cliente contradiga el modo seleccionado. `field-emulator` no gobierna ni recalcula este control.
 
 La animación de bomba destella verde/azul cuando el arranque y la marcha no coinciden: `bB#Arndo=1` con `bB#EMar=0`, o `bB#Arndo=0` con `bB#EMar=1`. La jerarquía de colores se mantiene: sin conexión gris, falla roja, transición verde/azul, marcha verde, parada azul.
 
@@ -281,7 +303,8 @@ Archivos principales:
 
 ## Acceso
 
-`trasvase-tester` sólo expone el puerto interno `8080` en `servicoop-edge-net`. No existe binding al host ni acceso LAN directo. Todo acceso de operador entra por `https://comunicaciones.servicoop.com.ar/moto-tester/`, donde `edge-gateway` valida la sesión protegida. Los endpoints mutables vuelven a verificar esa sesión en el servicio. La comunicación privada con `field-emulator` usa `moto-tester-backend-net`.
+`trasvase-tester` sólo expone el puerto interno `8080` en `servicoop-edge-net`. No existe binding al host ni acceso LAN directo. Todo acceso de operador entra sin login por `https://comunicaciones.servicoop.com.ar/moto-tester/`. `edge-gateway` inyecta el modo de acceso de plataforma y los endpoints mutables exigen esa marca confiable; no validan credenciales ni cookies. La comunicación privada con `field-emulator` usa `moto-tester-backend-net` y conserva su token interno propio.
+
 ## Orden de arranque y error `Connection refused` del emulador
 
 El `field-emulator` consume la API interna del servicio web en `http://trasvase-tester:8080`. Si el emulador arranca antes de que Uvicorn esté aceptando conexiones, aparece un error transitorio:

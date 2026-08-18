@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from ...adapters.emulator_client import EmulatorClient
 from ...config import AppConfig
 from ...state import RuntimeState
 
@@ -13,12 +12,10 @@ class PumpsService:
         self,
         config: AppConfig,
         state: RuntimeState,
-        emulator_client: EmulatorClient,
         logger: logging.Logger,
     ):
         self.config = config
         self.state = state
-        self.emulator_client = emulator_client
         self.logger = logger
 
     def command(self, tag: str, value: bool, source: str) -> dict[str, Any]:
@@ -55,9 +52,17 @@ class PumpsService:
         results = self.state.enqueue_writes(requested, source=source)
         return {"ok": True, "pump_id": pump_id, "results": results}
 
-    def set_generate_emar(self, pump_id: int, enabled: bool) -> dict[str, Any]:
-        return self.emulator_client.request(
-            "PUT",
-            f"/pumps/{pump_id}/generate-emar",
-            {"enabled": enabled},
+    def set_emar_mode(self, pump_id: int, mode: str) -> dict[str, Any]:
+        self.logger.info(
+            "pump EMar mode pump=%s mode=%s source=web",
+            pump_id,
+            mode,
         )
+        tag = f"yB{pump_id}EMar"
+        result = self.state.set_pump_emar_mode(pump_id, mode, source="web")
+        return {
+            "ok": True,
+            "pump_id": pump_id,
+            "tag": tag,
+            **result,
+        }

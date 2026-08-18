@@ -7,8 +7,15 @@ from threading import Lock
 from typing import Any, Literal
 
 from .config import AppConfig, Signal
-from .polling_control import PollingControlStore
 from .injection_mode import InjectionModeStore
+from .polling_control import PollingControlStore
+from .pump_control import (
+    EMAR_AUTOMATIC,
+    EMAR_DISABLED,
+    EmarMode,
+    PUMP_EMAR_TAG,
+    PumpControlStore,
+)
 
 Quality = Literal["unknown", "good", "stale", "error", "local"]
 WriteKind = Literal["coil", "holding_register"]
@@ -53,10 +60,13 @@ class RuntimeState:
         config: AppConfig,
         injection_mode: InjectionModeStore,
         polling_control: PollingControlStore,
+        pump_controls: PumpControlStore,
     ):
         self.config = config
         self.injection_mode = injection_mode
         self.polling_control = polling_control
+        self.pump_controls = pump_controls
+        self._emar_modes = self.pump_controls.emar_modes()
         self._lock = Lock()
         self._values: dict[str, SignalValue] = {
             tag: SignalValue(
@@ -83,6 +93,12 @@ class RuntimeState:
             )
             for tag, signal in config.signals_by_tag.items()
         }
+        now = time.time()
+        for tag, value in self.pump_controls.initial_values().items():
+            item = self._values[tag]
+            item.value = value
+            item.quality = "local"
+            item.updated_at = now
         self._connection: dict[str, Any] = {
             "connected": False,
             "last_poll_at": None,
@@ -96,6 +112,13 @@ class RuntimeState:
         self._write_queue: deque[WriteRequest] = deque(maxlen=200)
         self._local_commands: dict[str, Any] = {}
         self.add_event("startup", "Runtime iniciado", level="info")
+        for pump_id in range(1, 6):
+            self._enqueue_one_unlocked(
+                f"yB{pump_id}EMar",
+                self._emar_value_unlocked(pump_id),
+                "startup-emar-mode",
+                now,
+            )
 
     def add_event(self, event_type: str, message: str, level: str = "info", **extra: Any) -> None:
         event = {
@@ -137,6 +160,42 @@ class RuntimeState:
                 item.quality = quality
                 item.updated_at = now
                 item.error = error
+            self._sync_emar_outputs_unlocked(updates, now)
+
+    def _sync_emar_outputs_unlocked(
+        self,
+        updates: dict[str, Any],
+        now: float,
+    ) -> None:
+        for pump_id in range(1, 6):
+            arndo_tag = f"bB{pump_id}Arndo"
+            if arndo_tag not in updates:
+                continue
+            desired = self._emar_value_unlocked(pump_id)
+            emar_tag = f"yB{pump_id}EMar"
+            queue_capacity = self._write_queue.maxlen or 0
+            if len(self._write_queue) >= queue_capacity:
+                self._events.appendleft(
+                    {
+                        "ts": now,
+                        "type": "emar_mode_queue_full",
+                        "level": "error",
+                        "message": f"No se pudo encolar {emar_tag}={desired}; cola completa",
+                        "tag": emar_tag,
+                        "value": desired,
+                        "source": "emar-mode",
+                    }
+                )
+                continue
+            self._enqueue_one_unlocked(emar_tag, desired, "emar-mode", now)
+
+    def _emar_value_unlocked(self, pump_id: int) -> bool:
+        mode = self._emar_modes[pump_id]
+        if mode == EMAR_DISABLED:
+            return False
+        if mode == EMAR_AUTOMATIC:
+            return self._values[f"bB{pump_id}Arndo"].value == 1
+        return True
 
     def update_value(self, tag: str, value: Any, quality: Quality = "good", error: str | None = None) -> None:
         self.update_values({tag: value}, quality=quality, error=error)
@@ -201,11 +260,38 @@ class RuntimeState:
         if invalid_tags:
             joined = ", ".join(invalid_tags)
             raise PermissionError(f"Los tags {joined} no pertenecen al area de inyeccion y*")
+        controlled_emar_tags = [tag for tag in validated if PUMP_EMAR_TAG.fullmatch(tag)]
+        if controlled_emar_tags:
+            joined = ", ".join(controlled_emar_tags)
+            raise PermissionError(
+                f"Los tags {joined} deben controlarse mediante /api/pumps/{{pump_id}}/emar-mode"
+            )
 
         mode_snapshot = self.injection_mode.snapshot()
         if not bool(mode_snapshot["enabled"]):
             return self._record_disabled_injections(validated, source, mode_snapshot["mode"])
         return self._enqueue_validated_writes(validated, source)
+
+    def set_pump_emar_mode(
+        self,
+        pump_id: int,
+        mode: str,
+        source: str = "web",
+    ) -> dict[str, Any]:
+        if pump_id < 1 or pump_id > 5:
+            raise KeyError("pump_id debe estar entre 1 y 5")
+        tag = f"yB{pump_id}EMar"
+        now = time.time()
+        with self._lock:
+            queue_capacity = self._write_queue.maxlen or 0
+            if len(self._write_queue) >= queue_capacity:
+                raise BufferError("Cola de escrituras completa; no se encolo ningun comando")
+            normalized = self.pump_controls.set_emar_mode(pump_id, mode)
+            self._emar_modes[pump_id] = normalized
+            desired = self._emar_value_unlocked(pump_id)
+            value = self._validate_write(tag, desired)
+            result = self._enqueue_one_unlocked(tag, value, source, now)
+            return {"mode": normalized, "value": value, **result}
 
     def _record_disabled_injections(
         self,
@@ -214,6 +300,7 @@ class RuntimeState:
         mode: str,
     ) -> dict[str, dict[str, Any]]:
         now = time.time()
+        self.pump_controls.update_rtu_tags(validated)
         with self._lock:
             results: dict[str, dict[str, Any]] = {}
             for tag, value in validated.items():
@@ -252,28 +339,41 @@ class RuntimeState:
             if len(self._write_queue) + len(validated) > queue_capacity:
                 raise BufferError("Cola de escrituras completa; no se encolo ningun comando")
 
+            self.pump_controls.update_rtu_tags(validated)
+
             results: dict[str, dict[str, Any]] = {}
             for tag, value in validated.items():
-                self._local_commands[tag] = {"value": value, "source": source, "created_at": now}
-                self._write_queue.append(WriteRequest(tag=tag, value=value, source=source, created_at=now))
-                item = self._values[tag]
-                item.value = value
-                item.quality = "local"
-                item.updated_at = now
-                item.error = "write queued"
-                self._events.appendleft(
-                    {
-                        "ts": now,
-                        "type": "command_queued",
-                        "level": "info",
-                        "message": f"Comando {tag}={value} encolado para escritura PLC",
-                        "tag": tag,
-                        "value": value,
-                        "source": source,
-                    }
-                )
-                results[tag] = {"queued": True, "written": False}
+                results[tag] = self._enqueue_one_unlocked(tag, value, source, now)
             return results
+
+    def _enqueue_one_unlocked(
+        self,
+        tag: str,
+        value: bool | int,
+        source: str,
+        now: float,
+    ) -> dict[str, bool]:
+        self._local_commands[tag] = {"value": value, "source": source, "created_at": now}
+        self._write_queue.append(
+            WriteRequest(tag=tag, value=value, source=source, created_at=now)
+        )
+        item = self._values[tag]
+        item.value = value
+        item.quality = "local"
+        item.updated_at = now
+        item.error = "write queued"
+        self._events.appendleft(
+            {
+                "ts": now,
+                "type": "command_queued",
+                "level": "info",
+                "message": f"Comando {tag}={value} encolado para escritura PLC",
+                "tag": tag,
+                "value": value,
+                "source": source,
+            }
+        )
+        return {"queued": True, "written": False}
 
     def enqueue_write(self, tag: str, value: Any, source: str = "web") -> dict[str, Any]:
         return self.enqueue_writes({tag: value}, source=source)[tag]
@@ -358,6 +458,7 @@ class RuntimeState:
             connection = dict(self._connection)
             events = list(self._events)[:100]
             local_commands = dict(self._local_commands)
+            emar_modes = dict(self._emar_modes)
 
         polling_control = self.polling_control.snapshot()
         max_stale_s = self.config.polling.max_stale_ms / 1000.0
@@ -386,18 +487,23 @@ class RuntimeState:
                 "unit_id": self.config.controller.unit_id,
             },
             "values": values,
-            "groups": self._build_groups(values),
+            "groups": self._build_groups(values, emar_modes),
             "events": events,
             "local_commands": local_commands,
         }
 
-    def _build_groups(self, values: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    def _build_groups(
+        self,
+        values: dict[str, dict[str, Any]],
+        emar_modes: dict[int, EmarMode],
+    ) -> dict[str, Any]:
         pumps: list[dict[str, Any]] = []
         for pump in range(1, 6):
             prefix = f"bB{pump}"
             pumps.append(
                 {
                     "id": pump,
+                    "emar_mode": emar_modes[pump],
                     "rtu": values.get(f"{prefix}RTU"),
                     "aut": values.get(f"{prefix}Aut"),
                     "ok": values.get(f"{prefix}Ok"),

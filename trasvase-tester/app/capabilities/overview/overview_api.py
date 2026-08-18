@@ -14,7 +14,7 @@ class OverviewApi:
         self,
         service: OverviewService,
         snapshot_hub: SnapshotHub,
-        require_operator: Callable[..., None],
+        require_edge: Callable[..., None],
     ):
         self.service = service
         self.snapshot_hub = snapshot_hub
@@ -31,7 +31,7 @@ class OverviewApi:
             "/api/modbus-polling/{function_code}",
             self.set_polling,
             methods=["PUT"],
-            dependencies=[Depends(require_operator)],
+            dependencies=[Depends(require_edge)],
         )
         self.router.add_api_websocket_route("/ws/stream", self.stream)
 

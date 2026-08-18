@@ -9,6 +9,7 @@ sys.path.insert(0, str(ROOT / "trasvase-tester"))
 from app.config import load_config
 from app.injection_mode import DISABLED, ENABLED, InjectionModeStore
 from app.polling_control import PollingControlStore
+from app.pump_control import PumpControlStore
 from app.state import RuntimeState
 
 
@@ -26,6 +27,7 @@ def test_default_config_map():
     assert cfg.controller.unit_id == 10
     assert cfg.polling.interval_ms == 2000
     assert cfg.polling.max_stale_ms == 5000
+    assert not hasattr(cfg.runtime, "edge_auth_verify_url")
     assert cfg.tables["analog_reads"].start_pdu == 0
     assert cfg.signals_by_tag["eNvCamAsp"].reference == 30001
     assert cfg.signals_by_tag["gResFn"].default == -1
@@ -120,6 +122,7 @@ def test_env_example_has_no_global_or_temporal_write_flags():
     assert "ALLOW_FACADE_WRITES" not in env
     assert "WRITE_MODE" not in env
     assert "INJECTION_ENABLE_LEASE_SECONDS" not in env
+    assert "EDGE_AUTH_VERIFY_URL" not in env
 
 
 def test_compose_uses_env_file_and_runtime_volume():
@@ -171,7 +174,8 @@ def test_only_y_tags_depend_on_injection_mode(tmp_path):
     cfg = load_config("config/default.yaml")
     injection_mode = InjectionModeStore(path=tmp_path / "injection_mode.txt")
     polling = PollingControlStore(tmp_path / "modbus_polling.json")
-    state = RuntimeState(cfg, injection_mode, polling)
+    controls = PumpControlStore(tmp_path / "pump_controls.json")
+    state = RuntimeState(cfg, injection_mode, polling, controls)
 
     for function_code in ("01", "02", "03", "04"):
         polling.update(function_code, enabled=False)
@@ -387,7 +391,7 @@ def test_g_setpoints_are_always_editable_from_react():
 def test_front_uses_websocket_stream_and_does_not_poll_refresh_snapshot():
     stream = (SERVICE_FRONTEND / "src/TrasvaseStreamClient.ts").read_text(encoding="utf-8")
     client = (SERVICE_FRONTEND / "src/TrasvaseApiClient.ts").read_text(encoding="utf-8")
-    api = (SERVICE_APP / "capabilities/diagnostics/diagnostics_api.py").read_text(encoding="utf-8")
+    main = (SERVICE_APP / "main.py").read_text(encoding="utf-8")
 
     assert '"ws/stream"' in client
     assert '@app.websocket("/ws/stream")' in main
@@ -426,6 +430,7 @@ def test_modbus_points_match_ace3600_formula_ranges():
 
 def test_pump_cards_include_arr_emar_generation_and_specific_pills():
     pump = (SERVICE_FRONTEND / "src/components/PumpCard.tsx").read_text(encoding="utf-8")
+    injection = (SERVICE_FRONTEND / "src/components/InjectionPanel.tsx").read_text(encoding="utf-8")
     client = (SERVICE_FRONTEND / "src/TrasvaseApiClient.ts").read_text(encoding="utf-8")
     emulator = Path("field-emulator/field_emulator/main.py").read_text(encoding="utf-8")
     header = (SERVICE_FRONTEND / "src/components/StatusHeader.tsx").read_text(encoding="utf-8")
@@ -433,8 +438,16 @@ def test_pump_cards_include_arr_emar_generation_and_specific_pills():
     assert "bB1Arndo" in Path("config/default.yaml").read_text(encoding="utf-8")
     assert "generar EMar" in pump
     assert "localStorage" not in pump
-    assert "setGenerateEmar" in client
-    assert 'values.get(f"bB{pump_id}Arndo")' in emulator
+    assert 'type="radio"' in pump
+    assert "Deshabilitado" in pump
+    assert "Automático" in pump
+    assert "Forzar" in pump
+    assert "pump.emar_mode" in pump
+    assert "setEmarMode" in client
+    assert "api/pumps/${pump}/emar-mode" in client
+    assert "^yB[1-5]EMar$" in injection
+    assert "generate_emar" not in emulator
+    assert 'values.get(f"bB{pump_id}Arndo")' not in emulator
     assert "Fuente: PLC" in header
     assert "RTU (0)" not in pump
     assert "Tablero (1)" not in pump

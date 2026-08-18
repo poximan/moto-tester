@@ -13,7 +13,7 @@ class ProcessApi:
     def __init__(
         self,
         service: ProcessService,
-        require_operator: Callable[..., None],
+        require_edge: Callable[..., None],
     ):
         self.service = service
         self.router = APIRouter()
@@ -26,7 +26,7 @@ class ProcessApi:
             "/api/emulator/valves",
             self.set_valves,
             methods=["PUT"],
-            dependencies=[Depends(require_operator)],
+            dependencies=[Depends(require_edge)],
         )
 
     def state(self) -> dict[str, Any]:

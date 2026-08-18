@@ -12,10 +12,10 @@ class ProductionApi:
     def __init__(
         self,
         service: ProductionService,
-        require_operator: Callable[..., None],
+        require_edge: Callable[..., None],
     ):
         self.service = service
-        self.router = APIRouter(dependencies=[Depends(require_operator)])
+        self.router = APIRouter(dependencies=[Depends(require_edge)])
         self.router.add_api_route("/api/write", self.write, methods=["POST"])
 
     def write(self, body: GenericWriteBody) -> dict[str, Any]:

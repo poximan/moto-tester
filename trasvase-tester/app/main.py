@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from .adapters.emulator_client import EmulatorClient
-from .auth import RequestAuthenticator
+from .access import EdgeAccessGuard
 from .capabilities.diagnostics.diagnostics_api import DiagnosticsApi
 from .capabilities.diagnostics.diagnostics_service import DiagnosticsService
 from .capabilities.injection.injection_api import InjectionApi
@@ -28,6 +28,7 @@ from .injection_mode import InjectionModeStore
 from .logging_utils import configure_file_logger
 from .modbus_client import ModbusPoller, SimulationPoller
 from .polling_control import PollingControlStore
+from .pump_control import PumpControlStore
 from .state import RuntimeState
 
 
@@ -37,14 +38,12 @@ LOGGER = configure_file_logger("trasvase.web", "trasvase-tester.log")
 
 config: AppConfig = load_config()
 injection_mode = InjectionModeStore()
-request_authenticator = RequestAuthenticator(
-    config.runtime.edge_auth_verify_url,
-    config.runtime.internal_emulator_token,
-)
+access_guard = EdgeAccessGuard(config.runtime.internal_emulator_token)
 polling_control = PollingControlStore(
     default_sample_rate_ms=config.polling.interval_ms
 )
-state = RuntimeState(config, injection_mode, polling_control)
+pump_controls = PumpControlStore()
+state = RuntimeState(config, injection_mode, polling_control, pump_controls)
 poller: ModbusPoller | SimulationPoller
 if config.runtime.simulation_mode:
     poller = SimulationPoller(config, state)
@@ -87,33 +86,33 @@ app.include_router(
     OverviewApi(
         overview_service,
         snapshot_hub,
-        request_authenticator.require_operator,
+        access_guard.require_edge,
     ).router
 )
 app.include_router(DiagnosticsApi(DiagnosticsService(state)).router)
 app.include_router(
     InjectionApi(
         InjectionService(config, state, LOGGER),
-        request_authenticator.require_operator,
-        request_authenticator.require_operator_or_emulator,
+        access_guard.require_edge,
+        access_guard.require_edge_or_emulator,
     ).router
 )
 app.include_router(
     ProcessApi(
         ProcessService(emulator_client),
-        request_authenticator.require_operator,
+        access_guard.require_edge,
     ).router
 )
 app.include_router(
     PumpsApi(
-        PumpsService(config, state, emulator_client, LOGGER),
-        request_authenticator.require_operator,
+        PumpsService(config, state, LOGGER),
+        access_guard.require_edge,
     ).router
 )
 app.include_router(
     ProductionApi(
         ProductionService(config, state),
-        request_authenticator.require_operator,
+        access_guard.require_edge,
     ).router
 )
 

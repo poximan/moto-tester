@@ -1,6 +1,7 @@
 export type SignalScalar = boolean | number | string | null;
 export type SignalQuality = "unknown" | "good" | "stale" | "error" | "local";
 export type InjectionModeName = "disabled" | "enabled";
+export type EmarMode = "disabled" | "automatic" | "forced";
 
 export interface ProjectDefinition {
   name: string;
@@ -77,6 +78,7 @@ export interface ConnectionState {
 
 export interface PumpSnapshot {
   id: number;
+  emar_mode: EmarMode;
   rtu: SignalValue | null;
   aut: SignalValue | null;
   ok: SignalValue | null;
@@ -118,7 +120,6 @@ export interface EmulatorState {
   yNvRes?: number;
   pump_count?: number;
   injection_enabled?: boolean;
-  generate_emar?: Record<string, boolean>;
   last_error?: string;
   bounds?: {
     yNvCamAsp?: { floor: number; ceiling: number };

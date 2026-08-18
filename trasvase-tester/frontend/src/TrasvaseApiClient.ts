@@ -5,6 +5,7 @@ import type {
   LogIndex,
   RuntimeSnapshot,
   TesterConfig,
+  EmarMode,
   InjectionModeName,
 } from "./TrasvaseModels";
 
@@ -77,8 +78,8 @@ export class TrasvaseApiClient {
     }));
   }
 
-  public async setGenerateEmar(pump: number, enabled: boolean): Promise<EmulatorState> {
-    return this.parser.parseEmulator(await this.sendJson(`api/emulator/pumps/${pump}/generate-emar`, "PUT", { enabled }));
+  public setEmarMode(pump: number, mode: EmarMode): Promise<unknown> {
+    return this.sendJson(`api/pumps/${pump}/emar-mode`, "PUT", { mode });
   }
 
   private async getJson(relativePath: string, signal?: AbortSignal): Promise<unknown> {
