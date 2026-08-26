@@ -16,6 +16,8 @@ Hay una separación estricta:
 - `runtime/injection_mode.txt`: última habilitación elegida para los pedidos genéricos de inyección `y*`. El valor `enabled` o `disabled` sobrevive a recargas y reinicios del servicio hasta que un operador lo cambie. No condiciona consignas `g*`, comandos `c*` ni el control dedicado `yB#EMar`.
 - `runtime/pump_controls.json`: fuente persistente del modo Tablero/RTU y del modo de generación EMar de cada bomba. El servidor publica este estado común por snapshot y WebSocket a todos los clientes.
 - `runtime/modbus_polling.json`: control persistente e independiente de las lecturas FC01, FC02, FC03 y FC04. Todas nacen activas usando `POLL_INTERVAL_MS` —2000 ms en el `.env.example`—; la botonera de cabecera permite pausar cada una o cambiar su período sin afectar las escrituras FC05/FC06.
+- `runtime/field_emulator_state.json`: modo manual/automático común, aperturas manuales, posición estacional fija y últimos niveles del emulador. Es la autoridad compartida por todos los clientes.
+- `runtime/field_emulator_level_history.csv`: histórico de nivel de cámara y reserva en texto CSV. Toma una muestra cada 30 segundos reales y conserva 180 días simulados —180 horas reales, equivalentes a 7 días y medio— sin usar base de datos.
 - `config/default.yaml`: **solo mapa Modbus y estructura de señales**: tablas, tags, filas, tipos, marcas de inyección y, cuando SCA la informa, variable interna `mapped_value`.
 
 El `docker-compose.yml` se limita a la orquestación: carga `.env`, conecta redes y monta `./runtime`. El servicio web no publica puertos del host y sólo se alcanza mediante `edge-gateway`. Los puertos internos `8080` y `8090`, los hosts de escucha, los comandos y el healthcheck pertenecen a sus Dockerfiles. La carpeta `runtime/` es local y generada; no forma parte de la imagen ni del repositorio. El código rechaza `server`, `controller`, `polling`, `safety` o `runtime` dentro de `config/default.yaml`.
@@ -148,12 +150,32 @@ curl -X PUT https://comunicaciones.servicoop.com.ar/moto-tester/api/emulator/val
   -d '{"inlet_open_pct":60,"outlet_open_pct":25}'
 ```
 
-El servicio experto calcula siempre, pero sólo envía efectivamente los niveles `yNvCamAsp` y `yNvRes` cuando `injection_mode` está en `enabled`. Modelo inicial implementado:
+El endpoint compatible `/valves` actualiza las aperturas manuales. El control completo se realiza con:
+
+```bash
+curl -X PUT https://comunicaciones.servicoop.com.ar/moto-tester/api/emulator/control \
+  -H "Content-Type: application/json" \
+  -d '{"mode":"automatic","season_position_pct":50}'
+```
+
+El modo, la estación y las aperturas se resuelven y persisten en el servidor; los clientes no ejecutan relojes ni aleatoriedad propios. El servicio experto envía `yNvCamAsp` y `yNvRes` juntos una vez por ciclo cuando `injection_mode` está en `enabled` y el PLC está conectado. Si se pierde la conexión, pausa el modelo y conserva el último estado; al reconectar continúa desde el feedback genuino del PLC. El backend conserva como pendiente sólo el último par automático, sin acumular niveles obsoletos. Modelo implementado:
 
 - `yNvCamAsp` se incrementa por la válvula de ingreso y se decrementa por bombas en marcha.
 - `yNvRes` se incrementa por bombas en marcha y se decrementa por la válvula de salida. La escala por defecto de salida es proporcional: con 3 bombas en marcha y la válvula de reserva al 50%, el caudal de salida empata el caudal que entra a reserva. Con menos bombas o menor apertura la reserva sube; con más bombas o mayor apertura baja según la diferencia neta.
+- Cada válvula conserva su apertura independiente de 0 a 100%. El caudal máximo del caño de entrada se calcula como `5/8` del caudal máximo del caño de salida; luego se aplica el porcentaje de su válvula correspondiente.
+- En `manual`, ambas aperturas proceden de los deslizadores.
+- En `automatic`, una hora real representa un día simulado completo. La válvula de salida sigue una curva continua con picos alrededor de las 06:00, 12:00 y 21:00 simuladas y jitter determinista por día, incluyendo jornadas de superconsumo ocasionales.
+- En `automatic`, la válvula de ingreso sigue un dial estacional continuo y fijo hasta que un operador lo modifica: solsticio de verano 20%, equinoccios 60% y solsticio de invierno 100%.
 - `yNvRes` queda acotado por `gResFn..gResSp`.
 - `yNvCamAsp` queda acotado por `gCamFn..gCamRb`.
+
+El histórico completo se consulta por:
+
+```bash
+curl 'https://comunicaciones.servicoop.com.ar/moto-tester/api/emulator/history?max_points=2400'
+```
+
+La API reduce los puntos enviados al navegador para dibujar las líneas, pero el CSV conserva todas las muestras de 30 segundos dentro de la ventana configurada.
 
 ### Comando de bomba
 
@@ -222,7 +244,7 @@ Direcciones relevantes de inyección:
 ```text
 .env.example         Plantilla de parámetros runtime fijos.
 docker-compose.yml   Orquestación de servicios; carga .env y monta runtime/ local.
-runtime/             Estado local generado: injection_mode.txt, modbus_polling.json, pump_controls.json, logs y estado del emulador.
+runtime/             Estado local generado: modos, controles, histórico CSV, logs y estado del emulador.
 trasvase-tester/
   Dockerfile         Imagen del servicio web + master Modbus.
   app/               Paquete Python importable del servicio.
@@ -240,7 +262,9 @@ field-emulator/
   Dockerfile         Imagen del servicio experto.
   requirements.txt   Dependencias del servicio experto.
   field_emulator/    Paquete Python importable del servicio.
-    main.py          Modelo de niveles + escritura yNvCamAsp/yNvRes.
+    main.py          API, modelo de niveles + escritura yNvCamAsp/yNvRes.
+    simulation.py    Reloj comprimido y curvas continuas de consumo/estación.
+    history.py       Muestreo y retención del histórico CSV de niveles.
 config/
   default.yaml       Solo mapa Modbus y señales.
 docs/
@@ -297,8 +321,8 @@ curl https://comunicaciones.servicoop.com.ar/moto-tester/api/diagnostics
 
 Archivos principales:
 
-- `runtime/logs/trasvase-tester.log`: servidor web, master Modbus integrado, lecturas, escrituras, errores de conexión y comandos.
-- `runtime/logs/field-emulator.log`: servicio experto de emulación, válvulas y escrituras de `yNvCamAsp` / `yNvRes`.
+- `runtime/logs/trasvase-tester.log`: servidor web, master Modbus integrado, lecturas, escrituras, errores de conexión y comandos de operador. Las inyecciones periódicas del emulador no se registran una por una.
+- `runtime/logs/field-emulator.log`: arranque, cambios de control, desconexión o recuperación del PLC y errores resumidos del servicio experto.
 
 
 ## Acceso

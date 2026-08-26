@@ -5,7 +5,6 @@ import styles from "./App.module.css";
 import { TrasvasePresenter } from "./TrasvasePresenter";
 import { InjectionPanel } from "./components/InjectionPanel";
 import { LogsPanel } from "./components/LogsPanel";
-import { MetricGrid } from "./components/MetricGrid";
 import { ProcessPanel } from "./components/ProcessPanel";
 import { ProductionTables } from "./components/ProductionTables";
 import { PumpGrid } from "./components/PumpGrid";
@@ -14,7 +13,7 @@ import { useTrasvaseData } from "./useTrasvaseData";
 
 export function App() {
   const presenter = useMemo(() => new TrasvasePresenter(), []);
-  const { client, config, emulator, error, execute, loading, logs, snapshot, streamState } = useTrasvaseData();
+  const { client, config, emulator, error, execute, levelHistory, loading, logs, snapshot, streamState } = useTrasvaseData();
 
   return (
     <AppShell productName="Trasvase Tester" sectionName="Moto Tester">
@@ -33,8 +32,7 @@ export function App() {
               snapshot={snapshot}
               streamState={streamState}
             />
-            <MetricGrid presenter={presenter} snapshot={snapshot} />
-            {emulator && <ProcessPanel emulator={emulator} onValves={async (inlet, outlet) => { await execute(() => client.setValves(inlet, outlet)); }} presenter={presenter} snapshot={snapshot} />}
+            {emulator && <ProcessPanel emulator={emulator} history={levelHistory} onControl={async (values) => execute(() => client.setEmulatorControl(values))} presenter={presenter} snapshot={snapshot} />}
             <PumpGrid client={client} execute={execute} presenter={presenter} snapshot={snapshot} />
             <ProductionTables
               config={config}

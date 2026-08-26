@@ -34,6 +34,34 @@
 .pumpLabel {
   font-family: var(--sc-font-sans);
 }
+.levelIndicator rect {
+  fill: color-mix(in srgb, var(--sc-color-surface) 92%, transparent);
+  stroke: color-mix(in srgb, var(--sc-color-primary) 48%, var(--sc-color-border));
+  stroke-width: 2;
+}
+.indicatorLabel,
+.indicatorValue,
+.indicatorQuality {
+  font-family: var(--sc-font-sans);
+}
+.indicatorLabel {
+  fill: var(--sc-color-text-muted);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+.indicatorValue {
+  fill: var(--sc-color-text);
+  font-size: 23px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.indicatorQuality {
+  fill: var(--sc-color-text-muted);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
 .tankOutline,
 .closedTank {
   fill: color-mix(in srgb, var(--sc-color-info) 4%, transparent);
@@ -91,6 +119,63 @@
   font-size: 13px;
   font-weight: 800;
 }
+.controlHeader {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--sc-space-4);
+  align-items: stretch;
+  margin-top: var(--sc-space-4);
+}
+.modeSelector,
+.simulatedClock {
+  border: 1px solid var(--sc-color-border);
+  border-radius: var(--sc-radius-md);
+  background: var(--sc-color-surface);
+}
+.modeSelector {
+  display: flex;
+  align-items: center;
+  gap: var(--sc-space-5);
+  min-width: 0;
+  margin: 0;
+  padding: var(--sc-space-3) var(--sc-space-4) var(--sc-space-4);
+}
+.modeSelector legend {
+  padding: 0 var(--sc-space-2);
+  color: var(--sc-color-text-muted);
+  font-size: var(--sc-font-size-sm);
+  font-weight: 700;
+}
+.modeSelector label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sc-space-2);
+  color: var(--sc-color-text);
+  font-weight: 700;
+}
+.modeSelector input {
+  width: 1.1rem;
+  height: 1.1rem;
+  accent-color: var(--sc-color-primary);
+}
+.simulatedClock {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 0 var(--sc-space-4);
+  min-width: 17rem;
+  padding: var(--sc-space-3) var(--sc-space-4);
+}
+.simulatedClock span,
+.simulatedClock small {
+  color: var(--sc-color-text-muted);
+}
+.simulatedClock strong {
+  grid-row: 1 / 3;
+  grid-column: 2;
+  align-self: center;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--sc-font-size-xl);
+}
 .valveControls {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -111,9 +196,79 @@
   color: var(--sc-color-text);
   font-size: var(--sc-font-size-lg);
 }
+.valve small {
+  grid-column: 1 / -1;
+  color: var(--sc-color-text-muted);
+}
 .valve input {
   grid-column: 1 / -1;
   width: 100%;
+  accent-color: var(--sc-color-primary);
+}
+.valve input:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+.automaticControls {
+  display: grid;
+  grid-template-columns: minmax(16rem, 1fr) minmax(20rem, 28rem);
+  gap: var(--sc-space-5);
+  align-items: center;
+  margin-top: var(--sc-space-4);
+  padding: var(--sc-space-4);
+  border: 1px solid var(--sc-color-border);
+  border-radius: var(--sc-radius-md);
+  background: color-mix(in srgb, var(--sc-color-info) 4%, var(--sc-color-surface));
+}
+.seasonCopy h3 {
+  margin: 0;
+}
+.seasonCopy p {
+  max-width: 48rem;
+  margin: var(--sc-space-2) 0 var(--sc-space-3);
+  color: var(--sc-color-text-muted);
+  line-height: 1.55;
+}
+.seasonCopy strong {
+  color: var(--sc-color-primary);
+}
+.seasonDial {
+  display: grid;
+  justify-items: center;
+}
+.seasonDial svg {
+  display: block;
+  width: min(100%, 18rem);
+  overflow: visible;
+}
+.seasonDial text {
+  fill: var(--sc-color-text-muted);
+  font-family: var(--sc-font-sans);
+  font-size: 10px;
+  font-weight: 700;
+}
+.dialArc {
+  fill: none;
+  stroke: var(--sc-color-border);
+  stroke-linecap: round;
+  stroke-width: 11;
+}
+.dialHand {
+  stroke: var(--sc-color-primary);
+  stroke-linecap: round;
+  stroke-width: 4;
+}
+.dialMarker {
+  fill: var(--sc-color-primary);
+  stroke: var(--sc-color-surface);
+  stroke-width: 3;
+}
+.summerCapacity {
+  font-size: 9px !important;
+  font-weight: 600 !important;
+}
+.seasonDial input {
+  width: min(100%, 22rem);
   accent-color: var(--sc-color-primary);
 }
 .actions {
@@ -127,5 +282,15 @@
   }
   .valveControls {
     grid-template-columns: 1fr;
+  }
+  .controlHeader,
+  .automaticControls {
+    grid-template-columns: 1fr;
+  }
+  .simulatedClock {
+    min-width: 0;
+  }
+  .modeSelector {
+    flex-wrap: wrap;
   }
 }

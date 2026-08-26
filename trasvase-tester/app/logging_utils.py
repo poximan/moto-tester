@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+from collections import deque
 from pathlib import Path
 
 
@@ -52,5 +53,5 @@ def tail_file(path: Path, max_lines: int = 300) -> list[str]:
     if not path.exists() or not path.is_file():
         return []
     with path.open("r", encoding="utf-8", errors="replace") as f:
-        lines = f.readlines()
-    return [line.rstrip("\n") for line in lines[-max_lines:]]
+        lines = deque(f, maxlen=max_lines)
+    return [line.rstrip("\n") for line in lines]

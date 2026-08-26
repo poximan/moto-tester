@@ -1,6 +1,8 @@
 import { TrasvaseContractParser } from "./TrasvaseContractParser";
 import type {
   EmulatorState,
+  EmulatorControlMode,
+  LevelHistory,
   LogContent,
   LogIndex,
   RuntimeSnapshot,
@@ -31,6 +33,12 @@ export class TrasvaseApiClient {
 
   public async getEmulator(signal?: AbortSignal): Promise<EmulatorState> {
     return this.parser.parseEmulator(await this.getJson("api/emulator/state", signal));
+  }
+
+  public async getEmulatorHistory(signal?: AbortSignal): Promise<LevelHistory> {
+    return this.parser.parseLevelHistory(
+      await this.getJson("api/emulator/history?max_points=2400", signal),
+    );
   }
 
   public async getLogs(signal?: AbortSignal): Promise<LogIndex> {
@@ -76,6 +84,17 @@ export class TrasvaseApiClient {
       inlet_open_pct: inlet,
       outlet_open_pct: outlet,
     }));
+  }
+
+  public async setEmulatorControl(values: {
+    mode?: EmulatorControlMode;
+    season_position_pct?: number;
+    inlet_open_pct?: number;
+    outlet_open_pct?: number;
+  }): Promise<EmulatorState> {
+    return this.parser.parseEmulator(
+      await this.sendJson("api/emulator/control", "PUT", values),
+    );
   }
 
   public setEmarMode(pump: number, mode: EmarMode): Promise<unknown> {

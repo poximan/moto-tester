@@ -1,5 +1,6 @@
 import type {
   EmulatorState,
+  LevelHistory,
   LogContent,
   LogIndex,
   RuntimeSnapshot,
@@ -60,6 +61,26 @@ export class TrasvaseContractParser {
 
   public parseEmulator(payload: unknown): EmulatorState {
     return this.requireRecord(payload, "emulator") as EmulatorState;
+  }
+
+  public parseLevelHistory(payload: unknown): LevelHistory {
+    const record = this.requireRecord(payload, "emulator.history");
+    if (!Array.isArray(record.points)) {
+      throw new Error("Contrato inválido: emulator.history.points debe ser una lista");
+    }
+    record.points.forEach((value, index) => {
+      const point = this.requireRecord(value, `emulator.history.points[${index}]`);
+      for (const key of [
+        "timestamp_real",
+        "simulated_day_index",
+        "simulated_hour",
+        "chamber_level",
+        "reserve_level",
+      ]) {
+        this.requireNumber(point, key, `emulator.history.points[${index}]`);
+      }
+    });
+    return record as unknown as LevelHistory;
   }
 
   public parseStream(payload: unknown): StreamPayload {

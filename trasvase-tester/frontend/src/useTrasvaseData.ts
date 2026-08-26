@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { TrasvaseApiClient } from "./TrasvaseApiClient";
-import type { EmulatorState, LogIndex, RuntimeSnapshot, TesterConfig } from "./TrasvaseModels";
+import type { EmulatorState, LevelHistory, LogIndex, RuntimeSnapshot, TesterConfig } from "./TrasvaseModels";
 import { TrasvaseStreamClient, type StreamState } from "./TrasvaseStreamClient";
 
 export interface TrasvaseDataState {
@@ -12,6 +12,7 @@ export interface TrasvaseDataState {
   execute: (operation: () => Promise<unknown>) => Promise<boolean>;
   loading: boolean;
   logs: LogIndex | null;
+  levelHistory: LevelHistory | null;
   refreshSnapshot: () => Promise<void>;
   snapshot: RuntimeSnapshot | null;
   streamState: StreamState;
@@ -24,6 +25,7 @@ export function useTrasvaseData(): TrasvaseDataState {
   const [snapshot, setSnapshot] = useState<RuntimeSnapshot | null>(null);
   const [emulator, setEmulator] = useState<EmulatorState | null>(null);
   const [logs, setLogs] = useState<LogIndex | null>(null);
+  const [levelHistory, setLevelHistory] = useState<LevelHistory | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [streamState, setStreamState] = useState<StreamState>("connecting");
@@ -51,12 +53,14 @@ export function useTrasvaseData(): TrasvaseDataState {
       client.getConfig(controller.signal),
       client.getSnapshot(controller.signal),
       client.getEmulator(controller.signal),
+      client.getEmulatorHistory(controller.signal),
       client.getLogs(controller.signal),
-    ]).then(([nextConfig, nextSnapshot, nextEmulator, nextLogs]) => {
+    ]).then(([nextConfig, nextSnapshot, nextEmulator, nextHistory, nextLogs]) => {
       if (!active) return;
       setConfig(nextConfig);
       setSnapshot(nextSnapshot);
       setEmulator(nextEmulator);
+      setLevelHistory(nextHistory);
       setLogs(nextLogs);
       setError(null);
       setLoading(false);
@@ -77,5 +81,16 @@ export function useTrasvaseData(): TrasvaseDataState {
     };
   }, [client, stream]);
 
-  return { client, config, emulator, error, execute, loading, logs, refreshSnapshot, snapshot, streamState };
+  const historyRevision = emulator?.history?.revision;
+  useEffect(() => {
+    if (historyRevision === undefined || levelHistory?.revision === historyRevision) return;
+    const controller = new AbortController();
+    client.getEmulatorHistory(controller.signal).then(setLevelHistory).catch((caught) => {
+      if (controller.signal.aborted) return;
+      setError(caught instanceof Error ? caught.message : "No se pudo actualizar el histórico");
+    });
+    return () => controller.abort();
+  }, [client, historyRevision, levelHistory?.revision]);
+
+  return { client, config, emulator, error, execute, levelHistory, loading, logs, refreshSnapshot, snapshot, streamState };
 }

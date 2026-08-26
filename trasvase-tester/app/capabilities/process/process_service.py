@@ -15,3 +15,10 @@ class ProcessService:
     def set_valves(self, values: dict[str, Any]) -> dict[str, Any]:
         payload = {key: value for key, value in values.items() if value is not None}
         return self.emulator_client.request("PUT", "/valves", payload)
+
+    def set_control(self, values: dict[str, Any]) -> dict[str, Any]:
+        payload = {key: value for key, value in values.items() if value is not None}
+        return self.emulator_client.request("PUT", "/control", payload)
+
+    def history(self, max_points: int) -> dict[str, Any]:
+        return self.emulator_client.request("GET", f"/history?max_points={max_points}")

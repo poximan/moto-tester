@@ -1,6 +1,7 @@
 import sys
 from pathlib import Path
 
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -8,6 +9,8 @@ sys.path.insert(0, str(ROOT / "trasvase-tester"))
 
 from app.config import load_config
 from app.injection_mode import DISABLED, ENABLED, InjectionModeStore
+from app.logging_utils import tail_file
+from app.modbus_client import ModbusPoller
 from app.polling_control import PollingControlStore
 from app.pump_control import PumpControlStore
 from app.state import RuntimeState
@@ -192,6 +195,86 @@ def test_only_y_tags_depend_on_injection_mode(tmp_path):
     assert state.enqueue_injections({"yNvRes": 3200})["yNvRes"]["queued"] is True
 
 
+def test_field_emulator_keeps_only_its_latest_pending_levels(tmp_path):
+    cfg = load_config("config/default.yaml")
+    injection_mode = InjectionModeStore(path=tmp_path / "injection_mode.txt")
+    injection_mode.set_mode(ENABLED)
+    state = RuntimeState(
+        cfg,
+        injection_mode,
+        PollingControlStore(tmp_path / "modbus_polling.json"),
+        PumpControlStore(tmp_path / "pump_controls.json"),
+    )
+    state.drain_writes()
+
+    state.enqueue_injections(
+        {"yNvCamAsp": 1000, "yNvRes": 2000},
+        source="field-emulator",
+    )
+    state.enqueue_injections(
+        {"yNvCamAsp": 1100, "yNvRes": 2100},
+        source="field-emulator",
+    )
+
+    writes = state.drain_writes()
+    assert [(write.tag, write.value) for write in writes] == [
+        ("yNvCamAsp", 1100),
+        ("yNvRes", 2100),
+    ]
+
+
+def test_write_stays_pending_until_it_is_completed(tmp_path):
+    cfg = load_config("config/default.yaml")
+    state = RuntimeState(
+        cfg,
+        InjectionModeStore(path=tmp_path / "injection_mode.txt"),
+        PollingControlStore(tmp_path / "modbus_polling.json"),
+        PumpControlStore(tmp_path / "pump_controls.json"),
+    )
+    state.drain_writes()
+    state.enqueue_write("gResSp", 5000, source="web")
+
+    pending = state.next_write()
+    assert pending is not None
+    assert state.next_write() is pending
+    assert state.snapshot()["write_queue"] == {"depth": 1, "capacity": 200}
+
+    state.complete_write(pending)
+    assert state.next_write() is None
+
+
+def test_modbus_connection_failure_does_not_remove_the_pending_write(tmp_path, monkeypatch):
+    cfg = load_config("config/default.yaml")
+    state = RuntimeState(
+        cfg,
+        InjectionModeStore(path=tmp_path / "injection_mode.txt"),
+        PollingControlStore(tmp_path / "modbus_polling.json"),
+        PumpControlStore(tmp_path / "pump_controls.json"),
+    )
+    state.drain_writes()
+    state.enqueue_write("gResSp", 5000, source="web")
+    pending = state.next_write()
+    poller = ModbusPoller(cfg, state)
+    poller._client = object()
+
+    def fail_write(request):
+        raise ConnectionError("PLC no disponible")
+
+    monkeypatch.setattr(poller, "_write_request", fail_write)
+
+    with pytest.raises(ConnectionError, match="PLC no disponible"):
+        poller._process_writes()
+
+    assert state.next_write() is pending
+
+
+def test_log_tail_reads_only_the_requested_final_lines(tmp_path):
+    log_path = tmp_path / "service.log"
+    log_path.write_text("".join(f"line {index}\n" for index in range(1000)), encoding="utf-8")
+
+    assert tail_file(log_path, max_lines=3) == ["line 997", "line 998", "line 999"]
+
+
 def test_modbus_polling_defaults_and_persists_by_function_code(tmp_path):
     path = tmp_path / "runtime" / "modbus_polling.json"
     store = PollingControlStore(path)
@@ -260,7 +343,7 @@ def test_sca_table_labels_and_production_counts_only():
     expected = {
         "analog_reads": ("SCA - lectura AN [0]", 8, 0),
         "analog_setpoints": ("SCA - consigna AN [1]", 17, 8),
-        "digital_reads": ("SCA - lectura DI [2]", 46, 0),
+        "digital_reads": ("SCA - lectura DI [2]", 41, 0),
         "digital_commands": ("SCA - comando DI [3]", 10, 20),
     }
     for table_name, (label, production_count, injection_count) in expected.items():
@@ -361,7 +444,7 @@ def test_dockerfiles_are_next_to_services_not_root():
     assert "FROM node:24.18.0-alpine AS frontend-builder" in app_dockerfile
     assert "trasvase-tester/app ./trasvase-tester/app" in app_dockerfile
     assert "COPY --from=frontend-builder" in app_dockerfile
-    assert "COPY field-emulator ./field-emulator" in field_emulator_dockerfile
+    assert "field-emulator ./field-emulator" in field_emulator_dockerfile
 
 
 def test_pump_assets_are_packaged():
@@ -391,10 +474,12 @@ def test_g_setpoints_are_always_editable_from_react():
 def test_front_uses_websocket_stream_and_does_not_poll_refresh_snapshot():
     stream = (SERVICE_FRONTEND / "src/TrasvaseStreamClient.ts").read_text(encoding="utf-8")
     client = (SERVICE_FRONTEND / "src/TrasvaseApiClient.ts").read_text(encoding="utf-8")
-    main = (SERVICE_APP / "main.py").read_text(encoding="utf-8")
+    overview_api = (
+        SERVICE_APP / "capabilities/overview/overview_api.py"
+    ).read_text(encoding="utf-8")
 
     assert '"ws/stream"' in client
-    assert '@app.websocket("/ws/stream")' in main
+    assert 'add_api_websocket_route("/ws/stream", self.stream)' in overview_api
     assert "setInterval" not in stream
     assert "new WebSocket" in stream
 

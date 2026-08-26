@@ -25,7 +25,8 @@ class InjectionService:
         return self.state.set_injection_mode(mode, source=source)
 
     def inject(self, values: dict[str, Any], source: str) -> dict[str, Any]:
-        self.logger.info("injection request source=%s values=%s", source, values)
+        if source != "field-emulator":
+            self.logger.info("injection request source=%s values=%s", source, values)
         for tag in values:
             signal = self.config.signals_by_tag.get(tag)
             if signal is None:

@@ -173,6 +173,9 @@ class RuntimeState:
                 continue
             desired = self._emar_value_unlocked(pump_id)
             emar_tag = f"yB{pump_id}EMar"
+            current = self._values[emar_tag]
+            if current.value == desired and current.quality != "error":
+                continue
             queue_capacity = self._write_queue.maxlen or 0
             if len(self._write_queue) >= queue_capacity:
                 self._events.appendleft(
@@ -270,7 +273,11 @@ class RuntimeState:
         mode_snapshot = self.injection_mode.snapshot()
         if not bool(mode_snapshot["enabled"]):
             return self._record_disabled_injections(validated, source, mode_snapshot["mode"])
-        return self._enqueue_validated_writes(validated, source)
+        return self._enqueue_validated_writes(
+            validated,
+            source,
+            replace_pending=source == "field-emulator",
+        )
 
     def set_pump_emar_mode(
         self,
@@ -332,9 +339,24 @@ class RuntimeState:
         self,
         validated: dict[str, bool | int],
         source: str,
+        *,
+        replace_pending: bool = False,
     ) -> dict[str, dict[str, Any]]:
         now = time.time()
         with self._lock:
+            if replace_pending:
+                replaced_tags = set(validated)
+                self._write_queue = deque(
+                    (
+                        request
+                        for request in self._write_queue
+                        if not (
+                            request.source == source
+                            and request.tag in replaced_tags
+                        )
+                    ),
+                    maxlen=self._write_queue.maxlen,
+                )
             queue_capacity = self._write_queue.maxlen or 0
             if len(self._write_queue) + len(validated) > queue_capacity:
                 raise BufferError("Cola de escrituras completa; no se encolo ningun comando")
@@ -384,6 +406,17 @@ class RuntimeState:
             while self._write_queue and len(drained) < limit:
                 drained.append(self._write_queue.popleft())
         return drained
+
+    def next_write(self) -> WriteRequest | None:
+        with self._lock:
+            return self._write_queue[0] if self._write_queue else None
+
+    def complete_write(self, request: WriteRequest) -> None:
+        with self._lock:
+            for index, queued in enumerate(self._write_queue):
+                if queued is request:
+                    del self._write_queue[index]
+                    return
 
     def has_pending_writes(self) -> bool:
         with self._lock:
@@ -459,6 +492,10 @@ class RuntimeState:
             events = list(self._events)[:100]
             local_commands = dict(self._local_commands)
             emar_modes = dict(self._emar_modes)
+            write_queue = {
+                "depth": len(self._write_queue),
+                "capacity": self._write_queue.maxlen or 0,
+            }
 
         polling_control = self.polling_control.snapshot()
         max_stale_s = self.config.polling.max_stale_ms / 1000.0
@@ -479,6 +516,7 @@ class RuntimeState:
             "project": self.config.project,
             "timestamp": now,
             "connection": connection,
+            "write_queue": write_queue,
             "injection_mode": injection_mode,
             "modbus_polling": polling_control,
             "controller": {

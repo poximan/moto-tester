@@ -2,6 +2,7 @@ export type SignalScalar = boolean | number | string | null;
 export type SignalQuality = "unknown" | "good" | "stale" | "error" | "local";
 export type InjectionModeName = "disabled" | "enabled";
 export type EmarMode = "disabled" | "automatic" | "forced";
+export type EmulatorControlMode = "manual" | "automatic";
 
 export interface ProjectDefinition {
   name: string;
@@ -114,6 +115,10 @@ export interface TesterConfig {
 }
 
 export interface EmulatorState {
+  control_mode?: EmulatorControlMode;
+  season_position_pct?: number;
+  manual_inlet_open_pct?: number;
+  manual_outlet_open_pct?: number;
   inlet_open_pct?: number;
   outlet_open_pct?: number;
   yNvCamAsp?: number;
@@ -121,10 +126,46 @@ export interface EmulatorState {
   pump_count?: number;
   injection_enabled?: boolean;
   last_error?: string;
+  simulated_clock?: {
+    day_index: number;
+    day_key: string;
+    hour: number;
+    display_time: string;
+  };
+  rates?: {
+    inlet_per_s: number;
+    outlet_per_s: number;
+    pump_per_s: number;
+    inlet_pipe_ratio: number;
+  };
+  history?: {
+    revision: number;
+    sample_interval_s: number;
+    retention_simulated_days: number;
+    stored_points: number;
+    file: string;
+  };
   bounds?: {
     yNvCamAsp?: { floor: number; ceiling: number };
     yNvRes?: { floor: number; ceiling: number };
   };
+}
+
+export interface LevelHistoryPoint {
+  timestamp_real: number;
+  simulated_day_index: number;
+  simulated_hour: number;
+  chamber_level: number;
+  reserve_level: number;
+}
+
+export interface LevelHistory {
+  revision: number;
+  sample_interval_s: number;
+  retention_simulated_days: number;
+  stored_points: number;
+  file: string;
+  points: LevelHistoryPoint[];
 }
 
 export interface StreamPayload {

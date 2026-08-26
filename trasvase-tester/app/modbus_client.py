@@ -320,8 +320,12 @@ class ModbusPoller:
             return
         if self._client is None:
             self._ensure_client()
-        for request in self.state.drain_writes():
+        for _ in range(50):
+            request = self.state.next_write()
+            if request is None:
+                return
             self._write_request(request)
+            self.state.complete_write(request)
 
     def _write_request(self, request: WriteRequest) -> None:
         signal = self.config.signals_by_tag[request.tag]

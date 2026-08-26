@@ -64,5 +64,21 @@ class EmulatorValveBody(BaseModel):
     outlet_open_pct: float | None = Field(default=None, ge=0, le=100)
 
 
+class EmulatorControlBody(EmulatorValveBody):
+    mode: Literal["manual", "automatic"] | None = None
+    season_position_pct: float | None = Field(default=None, ge=0, le=100)
+
+    @model_validator(mode="after")
+    def at_least_one_setting(self) -> "EmulatorControlBody":
+        if (
+            self.mode is None
+            and self.season_position_pct is None
+            and self.inlet_open_pct is None
+            and self.outlet_open_pct is None
+        ):
+            raise ValueError("Debe informar al menos un ajuste del emulador")
+        return self
+
+
 class PumpEmarModeBody(BaseModel):
     mode: Literal["disabled", "automatic", "forced"]

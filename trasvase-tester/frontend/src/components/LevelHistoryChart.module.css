@@ -1,0 +1,124 @@
+.history {
+  margin-top: var(--sc-space-6);
+  padding-top: var(--sc-space-5);
+  border-top: 1px solid var(--sc-color-border);
+}
+.heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sc-space-4);
+  margin-bottom: var(--sc-space-4);
+}
+.heading h3,
+.chartBlock h4 {
+  margin: 0;
+}
+.heading p {
+  margin: var(--sc-space-1) 0 0;
+  color: var(--sc-color-text-muted);
+}
+.heading span {
+  color: var(--sc-color-text-muted);
+  font-size: var(--sc-font-size-sm);
+  white-space: nowrap;
+}
+.gridCharts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sc-space-4);
+}
+.chartBlock {
+  min-width: 0;
+  padding: var(--sc-space-4);
+  border: 1px solid var(--sc-color-border);
+  border-radius: var(--sc-radius-md);
+  background: var(--sc-color-surface);
+}
+.chartBlock h4 {
+  margin-bottom: var(--sc-space-2);
+}
+.chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+  cursor: crosshair;
+  touch-action: pan-y;
+}
+.grid {
+  stroke: var(--sc-color-border);
+  stroke-width: 1;
+}
+.hitArea {
+  fill: transparent;
+}
+.axisLabel {
+  fill: var(--sc-color-text-muted);
+  font-family: var(--sc-font-sans);
+  font-size: 12px;
+}
+.levelLine {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.5;
+  vector-effect: non-scaling-stroke;
+}
+.chamberLine {
+  stroke: #0284c7;
+}
+.reserveLine {
+  stroke: #7c3aed;
+}
+.hoverDetail {
+  pointer-events: none;
+}
+.hoverGuide {
+  stroke: var(--sc-color-text-muted);
+  stroke-dasharray: 4 4;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+.hoverPoint {
+  fill: var(--sc-color-surface);
+  stroke-width: 3;
+  vector-effect: non-scaling-stroke;
+}
+.tooltip {
+  fill: #0f172a;
+  stroke: #94a3b8;
+  stroke-width: 1;
+}
+.tooltipText {
+  fill: #ffffff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.tooltipValue {
+  font-weight: 800;
+}
+.empty {
+  display: grid;
+  min-height: 12rem;
+  place-items: center;
+  padding: var(--sc-space-4);
+  border: 1px dashed var(--sc-color-border);
+  border-radius: var(--sc-radius-md);
+  color: var(--sc-color-text-muted);
+  text-align: center;
+}
+@media (max-width: 70rem) {
+  .gridCharts {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 45rem) {
+  .heading {
+    flex-direction: column;
+  }
+  .heading span {
+    white-space: normal;
+  }
+}

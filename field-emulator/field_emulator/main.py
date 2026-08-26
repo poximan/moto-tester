@@ -8,11 +8,14 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+
+from .history import LevelHistoryStore
+from .simulation import daily_consumption_pct, seasonal_inlet_pct, simulated_clock
 
 
 def _resolve_log_dir() -> Path:
@@ -97,38 +100,58 @@ class ValveBody(BaseModel):
     outlet_open_pct: float | None = Field(default=None, ge=0, le=100)
 
 
+class ControlBody(ValveBody):
+    mode: Literal["manual", "automatic"] | None = None
+    season_position_pct: float | None = Field(default=None, ge=0, le=100)
+
+
 class FieldEmulator:
     def __init__(self) -> None:
         self.api_url = os.getenv("TESTER_API_URL", "http://trasvase-tester:8080").rstrip("/")
         self.internal_token = os.environ["INTERNAL_EMULATOR_TOKEN"]
         self.interval_ms = _env_int("FIELD_EMULATOR_INTERVAL_MS", 1000)
-        self.inlet_rate = _env_float("FIELD_EMULATOR_INLET_RATE_PER_S", 90.0)
         self.pump_rate = _env_float("FIELD_EMULATOR_PUMP_RATE_PER_S", 12.0)
         # Salida a 100% = 6 bombas-equivalentes. Así, con 3 bombas en marcha
         # y válvula de reserva al 50%, el caudal de salida empata el ingreso.
         self.outlet_rate = _env_float("FIELD_EMULATOR_OUTLET_RATE_PER_S", self.pump_rate * 6.0)
+        self.inlet_pipe_ratio = _clamp(_env_float("FIELD_EMULATOR_INLET_PIPE_RATIO", 5.0 / 8.0), 0, 1)
+        self.inlet_rate = self.outlet_rate * self.inlet_pipe_ratio
         self.state_path = Path(os.getenv("FIELD_EMULATOR_STATE_FILE", "/runtime/field_emulator_state.json"))
+        self.history = LevelHistoryStore(
+            Path(os.getenv("FIELD_EMULATOR_HISTORY_FILE", "/runtime/field_emulator_level_history.csv")),
+            sample_interval_s=_env_float("FIELD_EMULATOR_HISTORY_INTERVAL_S", 30.0),
+            retention_simulated_days=_env_int("FIELD_EMULATOR_HISTORY_SIMULATED_DAYS", 180),
+        )
         self._lock = threading.RLock()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._last_tick = time.time()
         self._consecutive_api_errors = 0
+        self._last_plc_connected: bool | None = None
         self.state: dict[str, Any] = self._initial_state()
         self._load_state_file()
         LOGGER.info(
-            "field emulator init api_url=%s interval_ms=%s inlet_rate=%s outlet_rate=%s pump_rate=%s state_file=%s",
+            "field emulator init api_url=%s interval_ms=%s inlet_rate=%s outlet_rate=%s inlet_pipe_ratio=%s pump_rate=%s state_file=%s history_file=%s",
             self.api_url,
             self.interval_ms,
             self.inlet_rate,
             self.outlet_rate,
+            self.inlet_pipe_ratio,
             self.pump_rate,
             self.state_path,
+            self.history.path,
         )
 
     def _initial_state(self) -> dict[str, Any]:
+        inlet = _env_float("FIELD_EMULATOR_INLET_OPEN_PCT", 0.0)
+        outlet = _env_float("FIELD_EMULATOR_OUTLET_OPEN_PCT", 0.0)
         return {
-            "inlet_open_pct": _env_float("FIELD_EMULATOR_INLET_OPEN_PCT", 0.0),
-            "outlet_open_pct": _env_float("FIELD_EMULATOR_OUTLET_OPEN_PCT", 0.0),
+            "control_mode": "manual",
+            "season_position_pct": _env_float("FIELD_EMULATOR_SEASON_POSITION_PCT", 50.0),
+            "manual_inlet_open_pct": inlet,
+            "manual_outlet_open_pct": outlet,
+            "inlet_open_pct": inlet,
+            "outlet_open_pct": outlet,
             "yNvCamAsp": None,
             "yNvRes": None,
             "pump_count": 0,
@@ -144,9 +167,24 @@ class FieldEmulator:
         try:
             if self.state_path.exists():
                 raw = json.loads(self.state_path.read_text(encoding="utf-8"))
-                for key in ["inlet_open_pct", "outlet_open_pct", "yNvCamAsp", "yNvRes"]:
+                for key in [
+                    "control_mode",
+                    "season_position_pct",
+                    "manual_inlet_open_pct",
+                    "manual_outlet_open_pct",
+                    "inlet_open_pct",
+                    "outlet_open_pct",
+                    "yNvCamAsp",
+                    "yNvRes",
+                ]:
                     if key in raw:
                         self.state[key] = raw[key]
+                # Migración transparente del estado anterior, que sólo tenía
+                # las aperturas efectivas.
+                if "manual_inlet_open_pct" not in raw:
+                    self.state["manual_inlet_open_pct"] = self.state["inlet_open_pct"]
+                if "manual_outlet_open_pct" not in raw:
+                    self.state["manual_outlet_open_pct"] = self.state["outlet_open_pct"]
         except Exception as exc:  # noqa: BLE001
             self.state["last_error"] = f"No se pudo leer estado persistido: {exc}"
 
@@ -154,6 +192,10 @@ class FieldEmulator:
         try:
             self.state_path.parent.mkdir(parents=True, exist_ok=True)
             data = {
+                "control_mode": self.state["control_mode"],
+                "season_position_pct": self.state["season_position_pct"],
+                "manual_inlet_open_pct": self.state["manual_inlet_open_pct"],
+                "manual_outlet_open_pct": self.state["manual_outlet_open_pct"],
                 "inlet_open_pct": self.state["inlet_open_pct"],
                 "outlet_open_pct": self.state["outlet_open_pct"],
                 "yNvCamAsp": self.state["yNvCamAsp"],
@@ -180,6 +222,7 @@ class FieldEmulator:
 
     def snapshot(self) -> dict[str, Any]:
         with self._lock:
+            self._apply_control(time.time())
             return {
                 **self.state,
                 "api_url": self.api_url,
@@ -188,19 +231,57 @@ class FieldEmulator:
                     "inlet_per_s": self.inlet_rate,
                     "outlet_per_s": self.outlet_rate,
                     "pump_per_s": self.pump_rate,
+                    "inlet_pipe_ratio": self.inlet_pipe_ratio,
                 },
+                "history": self.history.metadata(),
             }
 
     def set_valves(self, body: ValveBody) -> dict[str, Any]:
         LOGGER.info("valve request inlet=%s outlet=%s", body.inlet_open_pct, body.outlet_open_pct)
         with self._lock:
             if body.inlet_open_pct is not None:
-                self.state["inlet_open_pct"] = _clamp(float(body.inlet_open_pct), 0, 100)
+                self.state["manual_inlet_open_pct"] = _clamp(float(body.inlet_open_pct), 0, 100)
             if body.outlet_open_pct is not None:
-                self.state["outlet_open_pct"] = _clamp(float(body.outlet_open_pct), 0, 100)
+                self.state["manual_outlet_open_pct"] = _clamp(float(body.outlet_open_pct), 0, 100)
+            self._apply_control(time.time())
             self.state["updated_at"] = time.time()
             self._save_state_file()
             return self.snapshot()
+
+    def set_control(self, body: ControlBody) -> dict[str, Any]:
+        LOGGER.info(
+            "control request mode=%s season=%s inlet=%s outlet=%s",
+            body.mode,
+            body.season_position_pct,
+            body.inlet_open_pct,
+            body.outlet_open_pct,
+        )
+        with self._lock:
+            if body.mode is not None:
+                self.state["control_mode"] = body.mode
+            if body.season_position_pct is not None:
+                self.state["season_position_pct"] = float(body.season_position_pct)
+            if body.inlet_open_pct is not None:
+                self.state["manual_inlet_open_pct"] = float(body.inlet_open_pct)
+            if body.outlet_open_pct is not None:
+                self.state["manual_outlet_open_pct"] = float(body.outlet_open_pct)
+            self._apply_control(time.time())
+            self.state["updated_at"] = time.time()
+            self._save_state_file()
+            return self.snapshot()
+
+    def _apply_control(self, now: float) -> None:
+        clock = simulated_clock(now)
+        mode = self.state.get("control_mode", "manual")
+        if mode == "automatic":
+            inlet = seasonal_inlet_pct(float(self.state["season_position_pct"]))
+            outlet = daily_consumption_pct(clock.hour, clock.day_index)
+        else:
+            inlet = float(self.state["manual_inlet_open_pct"])
+            outlet = float(self.state["manual_outlet_open_pct"])
+        self.state["inlet_open_pct"] = _clamp(inlet, 0, 100)
+        self.state["outlet_open_pct"] = _clamp(outlet, 0, 100)
+        self.state["simulated_clock"] = clock.as_dict()
 
     def _run(self) -> None:
         while not self._stop.is_set():
@@ -209,27 +290,34 @@ class FieldEmulator:
                 if self._consecutive_api_errors:
                     LOGGER.info("field emulator api recovered after %s failed ticks", self._consecutive_api_errors)
                 self._consecutive_api_errors = 0
+            except urllib.error.HTTPError as exc:
+                try:
+                    payload = json.loads(exc.read().decode("utf-8"))
+                    detail = payload.get("detail", str(exc)) if isinstance(payload, dict) else str(payload)
+                except (json.JSONDecodeError, UnicodeDecodeError):
+                    detail = str(exc)
+                self._record_api_error(f"HTTP {exc.code}: {detail}")
             except (urllib.error.URLError, TimeoutError, ConnectionRefusedError) as exc:
-                self._consecutive_api_errors += 1
-                # Durante arranque Docker es normal que el servicio web todavía
-                # no acepte conexiones aunque DNS ya resuelva el nombre del
-                # contenedor. No volcamos stack trace para este caso esperado.
-                if self._consecutive_api_errors in {1, 2, 3} or self._consecutive_api_errors % 30 == 0:
-                    LOGGER.warning(
-                        "field emulator api not ready api_url=%s error=%s consecutive=%s",
-                        self.api_url,
-                        exc,
-                        self._consecutive_api_errors,
-                    )
-                with self._lock:
-                    self.state["last_error"] = f"API no disponible: {exc}"
-                    self.state["updated_at"] = time.time()
+                self._record_api_error(str(exc))
             except Exception as exc:  # noqa: BLE001
                 LOGGER.exception("field emulator tick error: %s", exc)
                 with self._lock:
                     self.state["last_error"] = f"{type(exc).__name__}: {exc}"
                     self.state["updated_at"] = time.time()
             time.sleep(max(self.interval_ms / 1000.0, 0.1))
+
+    def _record_api_error(self, error: str) -> None:
+        self._consecutive_api_errors += 1
+        if self._consecutive_api_errors in {1, 2, 3} or self._consecutive_api_errors % 30 == 0:
+            LOGGER.warning(
+                "field emulator api error api_url=%s error=%s consecutive=%s",
+                self.api_url,
+                error,
+                self._consecutive_api_errors,
+            )
+        with self._lock:
+            self.state["last_error"] = f"API no disponible: {error}"
+            self.state["updated_at"] = time.time()
 
     def _get_json(self, path: str) -> dict[str, Any]:
         req = urllib.request.Request(f"{self.api_url}{path}", method="GET")
@@ -257,9 +345,18 @@ class FieldEmulator:
         snap = self._get_json("/api/snapshot")
         values = snap.get("values", {})
         injection_enabled = bool(snap.get("injection_mode", {}).get("enabled"))
+        plc_connected = bool(snap.get("connection", {}).get("connected"))
         pump_count = sum(1 for idx in range(1, 6) if _bit(values.get(f"bB{idx}EMar")))
 
+        if plc_connected != self._last_plc_connected:
+            if plc_connected:
+                LOGGER.info("PLC connection recovered; field writes resumed")
+            else:
+                LOGGER.warning("PLC disconnected; field writes paused")
+            self._last_plc_connected = plc_connected
+
         with self._lock:
+            self._apply_control(now)
             cam_previous = self.state.get("yNvCamAsp")
             res_previous = self.state.get("yNvRes")
             inlet_open = float(self.state["inlet_open_pct"])
@@ -281,7 +378,24 @@ class FieldEmulator:
                             "yNvRes": {"floor": res_floor, "ceiling": res_ceiling},
                         },
                         "last_snapshot_at": snap.get("timestamp"),
-                        "last_error": None,
+                        "last_error": None if plc_connected else "PLC desconectado; emulacion pausada",
+                        "updated_at": time.time(),
+                    }
+                )
+                self._save_state_file()
+            if plc_connected:
+                chamber_read = _num(values.get("eNvCamAsp"), _num(cam_previous, cam_floor))
+                reserve_read = _num(values.get("eNvRes"), _num(res_previous, res_floor))
+                self.history.record(now, chamber_read, reserve_read)
+            return
+
+        if not plc_connected:
+            with self._lock:
+                self.state.update(
+                    {
+                        "pump_count": pump_count,
+                        "last_snapshot_at": snap.get("timestamp"),
+                        "last_error": "PLC desconectado; emulacion pausada",
                         "updated_at": time.time(),
                     }
                 )
@@ -301,23 +415,10 @@ class FieldEmulator:
             "yNvCamAsp": int(round(cam)),
             "yNvRes": int(round(res)),
         }
-        # Escritura simétrica e independiente: la válvula de ingreso gobierna
-        # yNvCamAsp y la válvula de salida gobierna yNvRes. Se envía cada tag
-        # por separado para que una falla puntual no oculte cuál variable no se
-        # pudo escribir.
-        write_results: dict[str, Any] = {}
-        write_errors: dict[str, str] = {}
-        for tag, value in write_values.items():
-            try:
-                LOGGER.info("field write request tag=%s value=%s", tag, value)
-                write_results[tag] = self._post_json(
-                    "/api/injection",
-                    {"values": {tag: value}, "source": "field-emulator"},
-                )
-                LOGGER.info("field write queued tag=%s value=%s result=%s", tag, value, write_results[tag])
-            except Exception as exc:  # noqa: BLE001 - queremos registrar el tag exacto que falló
-                LOGGER.exception("field write error tag=%s value=%s error=%s", tag, value, exc)
-                write_errors[tag] = f"{type(exc).__name__}: {exc}"
+        write_response = self._post_json(
+            "/api/injection",
+            {"values": write_values, "source": "field-emulator"},
+        )
 
         with self._lock:
             self.state.update(
@@ -325,8 +426,8 @@ class FieldEmulator:
                     "yNvCamAsp": write_values["yNvCamAsp"],
                     "yNvRes": write_values["yNvRes"],
                     "last_write_values": write_values,
-                    "last_write_results": write_results,
-                    "last_write_errors": write_errors,
+                    "last_write_results": write_response.get("results", {}),
+                    "last_write_errors": {},
                     "pump_count": pump_count,
                     "bounds": {
                         "yNvCamAsp": {"floor": cam_floor, "ceiling": cam_ceiling},
@@ -334,11 +435,16 @@ class FieldEmulator:
                     },
                     "last_snapshot_at": snap.get("timestamp"),
                     "last_write_at": time.time(),
-                    "last_error": "; ".join(f"{tag}: {err}" for tag, err in write_errors.items()) if write_errors else None,
+                    "last_error": None,
                     "updated_at": time.time(),
                 }
             )
             self._save_state_file()
+        self.history.record(
+            now,
+            _num(values.get("eNvCamAsp"), float(write_values["yNvCamAsp"])),
+            _num(values.get("eNvRes"), float(write_values["yNvRes"])),
+        )
 
 
 emulator = FieldEmulator()
@@ -373,3 +479,13 @@ def valves(body: ValveBody) -> dict[str, Any]:
         return emulator.set_valves(body)
     except (urllib.error.URLError, TimeoutError) as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.put("/control")
+def control(body: ControlBody) -> dict[str, Any]:
+    return emulator.set_control(body)
+
+
+@app.get("/history")
+def history(max_points: int = Query(default=2400, ge=2, le=25_000)) -> dict[str, Any]:
+    return emulator.history.snapshot(max_points=max_points)

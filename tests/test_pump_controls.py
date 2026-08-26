@@ -59,7 +59,7 @@ def test_disabled_and_forced_always_write_their_expected_y_value(tmp_path):
     ]
 
 
-def test_automatic_emar_follows_arndo_and_reasserts_the_output(tmp_path):
+def test_automatic_emar_follows_arndo_without_repeating_the_same_output(tmp_path):
     state, service = build_service(tmp_path)
     state.update_values({"bB2Arndo": False})
     state.drain_writes()
@@ -82,15 +82,13 @@ def test_automatic_emar_follows_arndo_and_reasserts_the_output(tmp_path):
     assert [(write.tag, write.value) for write in true_write] == [
         ("yB2EMar", True),
     ]
-    assert [(write.tag, write.value) for write in repeated_true_write] == [
-        ("yB2EMar", True),
-    ]
+    assert repeated_true_write == []
     assert [(write.tag, write.value) for write in false_write] == [
         ("yB2EMar", False),
     ]
 
 
-def test_constant_modes_are_reasserted_when_arndo_is_polled(tmp_path):
+def test_constant_modes_do_not_repeat_writes_when_arndo_is_polled(tmp_path):
     state, service = build_service(tmp_path)
     service.set_emar_mode(1, "disabled")
     service.set_emar_mode(4, "forced")
@@ -98,9 +96,19 @@ def test_constant_modes_are_reasserted_when_arndo_is_polled(tmp_path):
 
     state.update_values({"bB1Arndo": True, "bB4Arndo": False})
 
+    assert state.drain_writes() == []
+
+
+def test_emar_is_retried_after_a_failed_write(tmp_path):
+    state, service = build_service(tmp_path)
+    service.set_emar_mode(1, "forced")
+    state.drain_writes()
+    state.write_result("yB1EMar", True, ok=False, error="PLC no respondió")
+
+    state.update_values({"bB1Arndo": False})
+
     assert [(write.tag, write.value) for write in state.drain_writes()] == [
-        ("yB1EMar", False),
-        ("yB4EMar", True),
+        ("yB1EMar", True),
     ]
 
 
