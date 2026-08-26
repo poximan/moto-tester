@@ -110,6 +110,7 @@ class RuntimeState:
         }
         self._events: deque[dict[str, Any]] = deque(maxlen=300)
         self._write_queue: deque[WriteRequest] = deque(maxlen=200)
+        self._write_in_flight: WriteRequest | None = None
         self._local_commands: dict[str, Any] = {}
         self.add_event("startup", "Runtime iniciado", level="info")
         for pump_id in range(1, 6):
@@ -177,7 +178,7 @@ class RuntimeState:
             if current.value == desired and current.quality != "error":
                 continue
             queue_capacity = self._write_queue.maxlen or 0
-            if len(self._write_queue) >= queue_capacity:
+            if self._write_depth_unlocked() >= queue_capacity:
                 self._events.appendleft(
                     {
                         "ts": now,
@@ -291,7 +292,7 @@ class RuntimeState:
         now = time.time()
         with self._lock:
             queue_capacity = self._write_queue.maxlen or 0
-            if len(self._write_queue) >= queue_capacity:
+            if self._write_depth_unlocked() >= queue_capacity:
                 raise BufferError("Cola de escrituras completa; no se encolo ningun comando")
             normalized = self.pump_controls.set_emar_mode(pump_id, mode)
             self._emar_modes[pump_id] = normalized
@@ -345,20 +346,9 @@ class RuntimeState:
         now = time.time()
         with self._lock:
             if replace_pending:
-                replaced_tags = set(validated)
-                self._write_queue = deque(
-                    (
-                        request
-                        for request in self._write_queue
-                        if not (
-                            request.source == source
-                            and request.tag in replaced_tags
-                        )
-                    ),
-                    maxlen=self._write_queue.maxlen,
-                )
+                return self._coalesce_pending_writes_unlocked(validated, source, now)
             queue_capacity = self._write_queue.maxlen or 0
-            if len(self._write_queue) + len(validated) > queue_capacity:
+            if self._write_depth_unlocked() + len(validated) > queue_capacity:
                 raise BufferError("Cola de escrituras completa; no se encolo ningun comando")
 
             self.pump_controls.update_rtu_tags(validated)
@@ -367,6 +357,58 @@ class RuntimeState:
             for tag, value in validated.items():
                 results[tag] = self._enqueue_one_unlocked(tag, value, source, now)
             return results
+
+    def _coalesce_pending_writes_unlocked(
+        self,
+        validated: dict[str, bool | int],
+        source: str,
+        now: float,
+    ) -> dict[str, dict[str, Any]]:
+        pending_by_tag: dict[str, WriteRequest] = {}
+        compacted: deque[WriteRequest] = deque(maxlen=self._write_queue.maxlen)
+        for request in self._write_queue:
+            if request.source == source and request.tag in validated:
+                if request.tag in pending_by_tag:
+                    continue
+                pending_by_tag[request.tag] = request
+            compacted.append(request)
+
+        missing_tags = [tag for tag in validated if tag not in pending_by_tag]
+        queue_capacity = self._write_queue.maxlen or 0
+        compacted_depth = len(compacted) + (1 if self._write_in_flight is not None else 0)
+        if compacted_depth + len(missing_tags) > queue_capacity:
+            raise BufferError("Cola de escrituras completa; no se encolo ningun comando")
+        self._write_queue = compacted
+
+        self.pump_controls.update_rtu_tags(validated)
+        results: dict[str, dict[str, Any]] = {}
+        for tag, value in validated.items():
+            pending = pending_by_tag.get(tag)
+            if pending is None:
+                results[tag] = self._enqueue_one_unlocked(tag, value, source, now)
+                continue
+            pending.value = value
+            pending.created_at = now
+            self._update_queued_value_unlocked(tag, value, source, now)
+            results[tag] = {"queued": True, "written": False}
+        return results
+
+    def _update_queued_value_unlocked(
+        self,
+        tag: str,
+        value: bool | int,
+        source: str,
+        now: float,
+    ) -> None:
+        self._local_commands[tag] = {"value": value, "source": source, "created_at": now}
+        item = self._values[tag]
+        item.value = value
+        item.quality = "local"
+        item.updated_at = now
+        item.error = "write queued"
+
+    def _write_depth_unlocked(self) -> int:
+        return len(self._write_queue) + (1 if self._write_in_flight is not None else 0)
 
     def _enqueue_one_unlocked(
         self,
@@ -409,18 +451,18 @@ class RuntimeState:
 
     def next_write(self) -> WriteRequest | None:
         with self._lock:
-            return self._write_queue[0] if self._write_queue else None
+            if self._write_in_flight is None and self._write_queue:
+                self._write_in_flight = self._write_queue.popleft()
+            return self._write_in_flight
 
     def complete_write(self, request: WriteRequest) -> None:
         with self._lock:
-            for index, queued in enumerate(self._write_queue):
-                if queued is request:
-                    del self._write_queue[index]
-                    return
+            if self._write_in_flight is request:
+                self._write_in_flight = None
 
     def has_pending_writes(self) -> bool:
         with self._lock:
-            return bool(self._write_queue)
+            return self._write_in_flight is not None or bool(self._write_queue)
 
     def injection_mode_snapshot(self) -> dict[str, Any]:
         return self.injection_mode.snapshot()
@@ -493,7 +535,7 @@ class RuntimeState:
             local_commands = dict(self._local_commands)
             emar_modes = dict(self._emar_modes)
             write_queue = {
-                "depth": len(self._write_queue),
+                "depth": self._write_depth_unlocked(),
                 "capacity": self._write_queue.maxlen or 0,
             }
 

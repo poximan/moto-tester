@@ -223,6 +223,52 @@ def test_field_emulator_keeps_only_its_latest_pending_levels(tmp_path):
     ]
 
 
+def test_field_emulator_levels_keep_their_turn_while_one_write_is_in_flight(tmp_path):
+    cfg = load_config("config/default.yaml")
+    injection_mode = InjectionModeStore(path=tmp_path / "injection_mode.txt")
+    injection_mode.set_mode(ENABLED)
+    state = RuntimeState(
+        cfg,
+        injection_mode,
+        PollingControlStore(tmp_path / "modbus_polling.json"),
+        PumpControlStore(tmp_path / "pump_controls.json"),
+    )
+    state.drain_writes()
+
+    state.enqueue_injections(
+        {"yNvCamAsp": 1000, "yNvRes": 2000},
+        source="field-emulator",
+    )
+    chamber_write = state.next_write()
+    assert chamber_write is not None
+    assert (chamber_write.tag, chamber_write.value) == ("yNvCamAsp", 1000)
+
+    state.enqueue_injections(
+        {"yNvCamAsp": 1100, "yNvRes": 2100},
+        source="field-emulator",
+    )
+    state.complete_write(chamber_write)
+
+    reserve_write = state.next_write()
+    assert reserve_write is not None
+    assert (reserve_write.tag, reserve_write.value) == ("yNvRes", 2100)
+
+    state.enqueue_injections(
+        {"yNvCamAsp": 1200, "yNvRes": 2200},
+        source="field-emulator",
+    )
+    state.complete_write(reserve_write)
+
+    next_chamber_write = state.next_write()
+    assert next_chamber_write is not None
+    assert (next_chamber_write.tag, next_chamber_write.value) == ("yNvCamAsp", 1200)
+    state.complete_write(next_chamber_write)
+
+    next_reserve_write = state.next_write()
+    assert next_reserve_write is not None
+    assert (next_reserve_write.tag, next_reserve_write.value) == ("yNvRes", 2200)
+
+
 def test_write_stays_pending_until_it_is_completed(tmp_path):
     cfg = load_config("config/default.yaml")
     state = RuntimeState(
