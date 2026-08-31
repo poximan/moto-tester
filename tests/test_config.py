@@ -71,6 +71,7 @@ def test_exchange_map_matches_the_four_sca_tables():
     }
     expected_digital_rows = {
         "bRFF": 0,
+        "bResFR": 4,
         "bResRb": 5, "bResAt": 6, "bResBj": 7, "bResNvAtP": 8, "bResNvBjP": 9,
         "bCAspRb": 14, "bCAspAt": 15, "bCAspBj": 16,
         "bCAspNvAtP": 17, "bCAspNvBjP": 18,
@@ -84,13 +85,21 @@ def test_exchange_map_matches_the_four_sca_tables():
     expected_rows["digital_reads"] = expected_digital_rows
 
     for table_name, tags in expected_rows.items():
-        actual = {signal.tag: signal.row for signal in cfg.tables[table_name].signals}
+        table = cfg.tables[table_name]
+        actual = {signal.tag: signal.row for signal in table.signals}
         assert actual == tags
+        assert len(set(actual.values())) == len(actual)
+        for signal in table.signals:
+            assert signal.reference == table.start_ref + signal.row
+            assert signal.pdu_address == table.start_pdu + signal.row
+            assert signal.value_class == table.value_class
+            assert signal.positive_logic == table.positive_logic
 
     expected_mapped_values = {
         "eNvCamAsp": "iNvCamAsp", "eNvRes": "iNvRes", "eTurb": "iTurb",
         **{f"eB{pump}Hs": f"B{pump}Hs" for pump in range(1, 6)},
         "bRFF": "iRFF",
+        "bResFR": "ResFR",
         "bResRb": "ResRb", "bResAt": "ResAt", "bResBj": "ResBj",
         "bResNvAtP": "ResNvAtP", "bResNvBjP": "ResNvBjP",
         "bCAspRb": "CAspRb", "bCAspAt": "CAspAt", "bCAspBj": "CAspBj",
@@ -112,10 +121,77 @@ def test_exchange_map_matches_the_four_sca_tables():
     }
     assert actual_mapped_values == expected_mapped_values
 
+    expected_tables = {
+        "analog_reads": (0, "input_register", "mval", None, 30001, 26),
+        "analog_setpoints": (1, "holding_register", "iprm", None, 42049, 35),
+        "digital_reads": (2, "discrete_input", "mbit", True, 14097, 77),
+        "digital_commands": (3, "coil", "bit", True, 6145, 43),
+    }
+    assert set(cfg.tables) == set(expected_tables)
+    for table_name, expected in expected_tables.items():
+        table = cfg.tables[table_name]
+        actual = (
+            table.exchange_id,
+            table.kind,
+            table.value_class,
+            table.positive_logic,
+            table.start_ref,
+            table.count,
+        )
+        assert actual == expected
+
+    expected_parameter_defaults = {
+        "gResSp": 6000, "gResRb": 5000, "gResAt": 4700,
+        "gResParA": 4500, "gResParB": 4300, "gResParC": 4100, "gResParD": 3900,
+        "gResArrA": 1500, "gResArrB": 1200, "gResArrC": 1100, "gResArrD": 1000,
+        "gResBj": 600, "gResFn": -1,
+        "gCamRb": 4000, "gCamAt": 3500, "gCamBj": 600, "gCamFn": 0,
+        "yNvCamAsp": 0, "yNvRes": 0, "yTurb": 0,
+        "yB1Hs": 0, "yB2Hs": 0, "yB3Hs": 0, "yB4Hs": 0, "yB5Hs": 0,
+    }
+    actual_parameter_defaults = {
+        signal.tag: signal.default
+        for signal in cfg.tables["analog_setpoints"].signals
+    }
+    assert actual_parameter_defaults == expected_parameter_defaults
+
+    assert cfg.signals_by_tag["gResSp"].label == "Reserva nivel superior"
+    assert cfg.signals_by_tag["gResFn"].label == "Reserva fondo"
+    assert cfg.signals_by_tag["gCamFn"].label == "Cámara fondo"
+    assert cfg.signals_by_tag["bRFF"].label == "Relé de falta de fase"
+    assert cfg.signals_by_tag["bResFR"].label == "Reserva fuera de rango"
+    for pump in range(1, 6):
+        assert cfg.signals_by_tag[f"bB{pump}Arndo"].label == f"Bomba {pump} arrancando"
+
 
 def test_yaml_has_no_runtime_parameters():
     raw = yaml.safe_load(Path("config/default.yaml").read_text(encoding="utf-8"))
     assert not (RUNTIME_SECTIONS & set(raw))
+
+
+def test_exchange_map_rejects_invalid_base_duplicate_rows_and_negative_logic(tmp_path):
+    source = Path("config/default.yaml")
+
+    invalid_base = yaml.safe_load(source.read_text(encoding="utf-8"))
+    invalid_base["tables"]["digital_reads"]["start_ref"] = 14098
+    invalid_base_path = tmp_path / "invalid-base.yaml"
+    invalid_base_path.write_text(yaml.safe_dump(invalid_base), encoding="utf-8")
+    with pytest.raises(ValueError, match="Base invalida en digital_reads"):
+        load_config(invalid_base_path)
+
+    duplicate_row = yaml.safe_load(source.read_text(encoding="utf-8"))
+    duplicate_row["tables"]["digital_reads"]["signals"][1]["row"] = 0
+    duplicate_row_path = tmp_path / "duplicate-row.yaml"
+    duplicate_row_path.write_text(yaml.safe_dump(duplicate_row), encoding="utf-8")
+    with pytest.raises(ValueError, match="Fila duplicada en digital_reads: 0"):
+        load_config(duplicate_row_path)
+
+    negative_logic = yaml.safe_load(source.read_text(encoding="utf-8"))
+    negative_logic["tables"]["digital_commands"]["positive_logic"] = False
+    negative_logic_path = tmp_path / "negative-logic.yaml"
+    negative_logic_path.write_text(yaml.safe_dump(negative_logic), encoding="utf-8")
+    with pytest.raises(ValueError, match="debe declarar positive_logic=true"):
+        load_config(negative_logic_path)
 
 
 def test_env_example_has_no_global_or_temporal_write_flags():
@@ -389,7 +465,7 @@ def test_sca_table_labels_and_production_counts_only():
     expected = {
         "analog_reads": ("SCA - lectura AN [0]", 8, 0),
         "analog_setpoints": ("SCA - consigna AN [1]", 17, 8),
-        "digital_reads": ("SCA - lectura DI [2]", 41, 0),
+        "digital_reads": ("SCA - lectura DI [2]", 42, 0),
         "digital_commands": ("SCA - comando DI [3]", 10, 20),
     }
     for table_name, (label, production_count, injection_count) in expected.items():
@@ -431,23 +507,75 @@ def test_injection_targets_are_explicit():
     assert cfg.signals_by_tag["bB5Arndo"].row == 76
 
 
-def test_polling_excludes_injection_memory_from_reads():
+def test_polling_reads_every_declared_exchange_table_completely(tmp_path):
     cfg = load_config("config/default.yaml")
-    analog = cfg.tables["analog_setpoints"]
-    digital = cfg.tables["digital_commands"]
+    state = RuntimeState(
+        cfg,
+        InjectionModeStore(path=tmp_path / "injection_mode.txt"),
+        PollingControlStore(tmp_path / "modbus_polling.json"),
+        PumpControlStore(tmp_path / "pump_controls.json"),
+    )
+    poller = ModbusPoller(cfg, state)
 
-    analog_poll_count = max(s.row for s in analog.signals if not s.facade) + 1
-    digital_poll_count = max(s.row for s in digital.signals if not s.facade) + 1
+    class Response:
+        def __init__(self, *, registers=None, bits=None):
+            self.registers = registers
+            self.bits = bits
 
-    assert analog_poll_count == 22
-    assert digital_poll_count == 18
-    assert not any(s.tag.startswith("y") for s in analog.signals if not s.facade)
-    assert not any(s.tag.startswith("y") for s in digital.signals if not s.facade)
+        def isError(self):
+            return False
 
-    source = (SERVICE_APP / "modbus_client.py").read_text(encoding="utf-8")
-    assert "return [sig for sig in table.signals if not sig.facade]" in source
-    assert "La lectura periódica no incluye la zona y*" not in source
-    assert "feedback oficial" in source
+    class RecordingClient:
+        connected = True
+
+        def __init__(self):
+            self.calls = []
+
+        def read_input_registers(self, *, address, count, **kwargs):
+            self.calls.append(("input_register", address, count))
+            return Response(registers=list(range(count)))
+
+        def read_holding_registers(self, *, address, count, **kwargs):
+            self.calls.append(("holding_register", address, count))
+            return Response(registers=list(range(count)))
+
+        def read_discrete_inputs(self, *, address, count, **kwargs):
+            self.calls.append(("discrete_input", address, count))
+            return Response(bits=[bool(index % 2) for index in range(count)])
+
+        def read_coils(self, *, address, count, **kwargs):
+            self.calls.append(("coil", address, count))
+            return Response(bits=[bool(index % 2) for index in range(count)])
+
+    client = RecordingClient()
+    poller._client = client
+
+    updates_by_table = {}
+    for table in cfg.tables.values():
+        updates = poller._read_table(table)
+        updates_by_table[table.name] = updates
+        assert set(updates) == {signal.tag for signal in table.signals}
+
+    assert client.calls == [
+        (table.kind, table.start_pdu, table.count)
+        for table in cfg.tables.values()
+    ]
+    assert "yNvRes" in updates_by_table["analog_setpoints"]
+    assert "yB5Falla" in updates_by_table["digital_commands"]
+    assert "bResFR" in updates_by_table["digital_reads"]
+    assert "bB1RTU" in updates_by_table["digital_reads"]
+    assert "bB1Aut" in updates_by_table["digital_reads"]
+    assert "bB5Arndo" in updates_by_table["digital_reads"]
+
+    state.mark_table_error("analog_setpoints", "lectura incompleta")
+    assert state.snapshot()["values"]["yNvRes"]["quality"] == "error"
+
+    with pytest.raises(ValueError, match="Respuesta incompleta para analog_setpoints"):
+        poller._require_complete_response(
+            cfg.tables["analog_setpoints"],
+            [0] * (cfg.tables["analog_setpoints"].count - 1),
+            cfg.tables["analog_setpoints"].count,
+        )
 
 
 def test_ui_has_sca_tables_and_two_injection_tables():
@@ -557,6 +685,7 @@ def test_modbus_points_match_ace3600_formula_ranges():
     assert cfg.signals_by_tag["yNvRes"].reference == ace_reference("holding_register", 1, 28)
     assert cfg.signals_by_tag["yRFF"].reference == ace_reference("coil", 3, 23)
     assert cfg.signals_by_tag["yB5Falla"].reference == ace_reference("coil", 3, 42)
+    assert cfg.signals_by_tag["bResFR"].reference == ace_reference("discrete_input", 2, 4)
 
 
 def test_pump_cards_include_arr_emar_generation_and_specific_pills():
@@ -577,6 +706,13 @@ def test_pump_cards_include_arr_emar_generation_and_specific_pills():
     assert "setEmarMode" in client
     assert "api/pumps/${pump}/emar-mode" in client
     assert "^yB[1-5]EMar$" in injection
+    assert "presenter.signalBoolean(pump.rtu)" in pump
+    assert "presenter.signalBoolean(rtuSelection)" in pump
+    assert 'indicator("RTU", rtuFeedback)' in pump
+    assert '"bRFF": False' in (SERVICE_APP / "modbus_client.py").read_text(encoding="utf-8")
+    assert '"bResFR": reserve_level < reserve_floor or reserve_level > reserve_superior' in (
+        SERVICE_APP / "modbus_client.py"
+    ).read_text(encoding="utf-8")
     assert "generate_emar" not in emulator
     assert 'values.get(f"bB{pump_id}Arndo")' not in emulator
     assert "Fuente: PLC" in header

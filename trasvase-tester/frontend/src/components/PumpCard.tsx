@@ -23,7 +23,8 @@ const emarModes: ReadonlyArray<{ label: string; value: EmarMode }> = [
 
 export function PumpCard({ client, connected, execute, presenter, pump, rtuSelection }: PumpCardProps) {
   const visual = presenter.pumpVisual(pump, connected);
-  const rtu = presenter.signalBoolean(rtuSelection?.value == null ? pump.rtu : rtuSelection);
+  const rtuFeedback = presenter.signalBoolean(pump.rtu);
+  const rtuSelectionValue = presenter.signalBoolean(rtuSelection);
   const automatic = presenter.signalBoolean(pump.cmd_aut);
 
   const command = (values: { aut?: boolean; mr?: boolean }) => execute(() => client.sendPump(pump.id, values));
@@ -37,7 +38,7 @@ export function PumpCard({ client, connected, execute, presenter, pump, rtuSelec
       <img alt={`Bomba ${pump.id}: ${visual.label}`} className={styles.image} src={`assets/pump_${visual.image}.png`} />
       <strong className={styles.hours}>{presenter.signalText(pump.hours)} h</strong>
       <div className={styles.indicators}>
-        {indicator("RTU", rtu)}{indicator("Automático", presenter.signalBoolean(pump.aut))}
+        {indicator("RTU", rtuFeedback)}{indicator("Automático", presenter.signalBoolean(pump.aut))}
         {indicator("Salud", presenter.signalBoolean(pump.ok))}{indicator("EMar", presenter.signalBoolean(pump.running))}
         {indicator("Falla", presenter.signalBoolean(pump.fault), true)}
       </div>
@@ -58,7 +59,7 @@ export function PumpCard({ client, connected, execute, presenter, pump, rtuSelec
             ))}
           </div>
         </fieldset>
-        <FixedPositionSelector onChange={(nextRtu) => void execute(() => client.inject(`yB${pump.id}RTU`, nextRtu))} rtu={rtu} />
+        <FixedPositionSelector onChange={(nextRtu) => void execute(() => client.inject(`yB${pump.id}RTU`, nextRtu))} rtu={rtuSelectionValue} />
       </div>
       <div className={styles.commands}>
         <Button className={styles.modeCommand} onClick={() => void command({ aut: !automatic })} variant="secondary">{automatic ? "Auto" : "Man"}</Button>

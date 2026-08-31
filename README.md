@@ -18,7 +18,7 @@ Hay una separación estricta:
 - `runtime/modbus_polling.json`: control persistente e independiente de las lecturas FC01, FC02, FC03 y FC04. Todas nacen activas usando `POLL_INTERVAL_MS` —2000 ms en el `.env.example`—; la botonera de cabecera permite pausar cada una o cambiar su período sin afectar las escrituras FC05/FC06.
 - `runtime/field_emulator_state.json`: modo manual/automático común, aperturas manuales, posición estacional fija y últimos niveles del emulador. Es la autoridad compartida por todos los clientes.
 - `runtime/field_emulator_level_history.csv`: histórico de nivel de cámara y reserva en texto CSV. Toma una muestra cada 30 segundos reales y conserva 180 días simulados —180 horas reales, equivalentes a 7 días y medio— sin usar base de datos.
-- `config/default.yaml`: **solo mapa Modbus y estructura de señales**: tablas, tags, filas, tipos, marcas de inyección y, cuando SCA la informa, variable interna `mapped_value`.
+- `config/default.yaml`: **solo mapa Modbus y estructura de señales**: identificador de intercambio, clase `mval`/`iprm`/`mbit`/`bit`, base, tamaño, tags, filas, tipos, lógica positiva, marcas de inyección y, cuando SCA la informa, variable interna `mapped_value`.
 
 El `docker-compose.yml` se limita a la orquestación: carga `.env`, conecta redes y monta `./runtime`. El servicio web no publica puertos del host y sólo se alcanza mediante `edge-gateway`. Los puertos internos `8080` y `8090`, los hosts de escucha, los comandos y el healthcheck pertenecen a sus Dockerfiles. La carpeta `runtime/` es local y generada; no forma parte de la imagen ni del repositorio. El código rechaza `server`, `controller`, `polling`, `safety` o `runtime` dentro de `config/default.yaml`.
 
@@ -26,10 +26,10 @@ El `docker-compose.yml` se limita a la orquestación: carga `.env`, conecta rede
 
 Modo equivalente a conectar un SCADA de lectura:
 
-- Lee entradas analógicas reales `30001..30026` con FC04.
-- Lee consignas analógicas reales `42049..42070` con FC03. La zona `y*` no se lee; solo se escribe para inyección y empieza en fila 27.
-- Lee entradas digitales reales `14097..14173` con FC02 e incluye `bB#Arndo` al final de cada paquete de bomba.
-- Lee comandos digitales reales `6145..6162` con FC01. La zona `y*` no se lee; solo se escribe para inyección y empieza en fila 23.
+- Lee el bloque analógico completo `30001..30026` con FC04.
+- Lee el bloque completo `42049..42083` con FC03: consignas `g*` y memoria de inyección `y*`.
+- Lee el bloque digital completo `14097..14173` con FC02, incluido `bResFR` y los estados `RTU`, `Aut`, `Ok`, `EMar`, `Falla` y `Arndo` de cada bomba.
+- Lee el bloque completo `6145..6187` con FC01: comandos `c*` y memoria de inyección `y*`.
 - Las cuatro lecturas se planifican por separado y con inicio desfasado para no concentrar una ráfaga sobre el controlador. Un error de una FC queda aislado y no descarta las lecturas correctas de las demás.
 - La web permite editar consignas `g*` y generar comandos `c*`; ambos se encolan siempre para escritura al PLC. Las cuatro tablas SCA visibles muestran exclusivamente tags de producción, con filas internas vacías para respetar la distribución real. La zona `y*` no aparece en estas cuatro tablas y queda en las dos tablas de inyección. Los pedidos genéricos de inyección dependen de `runtime/injection_mode.txt`; el control dedicado `generar EMar` es una excepción explícita y siempre escribe su `yB#EMar`. La actualización de estado en la web llega por WebSocket (`/ws/stream`) y se aplica incrementalmente sobre celdas ya existentes; no hay polling `fetch` periódico del snapshot ni reconstrucción de tablas durante el ciclo de actualización.
 
@@ -161,13 +161,16 @@ curl -X PUT https://comunicaciones.servicoop.com.ar/moto-tester/api/emulator/con
 El modo, la estación y las aperturas se resuelven y persisten en el servidor; los clientes no ejecutan relojes ni aleatoriedad propios. El servicio experto envía `yNvCamAsp` y `yNvRes` juntos una vez por ciclo cuando `injection_mode` está en `enabled` y el PLC está conectado. Si se pierde la conexión, pausa el modelo y conserva el último estado; al reconectar continúa desde el feedback genuino del PLC. El backend conserva un único valor pendiente por nivel automático, actualiza ese valor sin alterar su posición y separa la operación Modbus en curso de la cola. Así no acumula niveles obsoletos ni permite que un tag prive al otro de su turno. Modelo implementado:
 
 - `yNvCamAsp` se incrementa por la válvula de ingreso y se decrementa por bombas en marcha.
-- `yNvRes` se incrementa por bombas en marcha y se decrementa por la válvula de salida. La escala por defecto de salida es proporcional: con 3 bombas en marcha y la válvula de reserva al 50%, el caudal de salida empata el caudal que entra a reserva. Con más bombas o menor apertura la reserva sube; con menos bombas o mayor apertura baja según la diferencia neta.
-- Cada válvula conserva su apertura independiente de 0 a 100%. El caudal máximo del caño de entrada se calcula como `5/8` del caudal máximo del caño de salida; luego se aplica el porcentaje de su válvula correspondiente.
+- `yNvRes` se incrementa por el aporte de las bombas efectivamente en marcha y se decrementa por el consumo horario. Cada bomba aporta `12 mm/s`; el consumo máximo es `45,6 mm/s`, equivalente a 3,8 bombas. Así, cuatro bombas superan el pico del 100% por `2,4 mm/s`, un margen del 5% sobre su aporte conjunto.
+- El emulador no arranca, detiene, selecciona ni rota bombas. Solo cuenta los estados positivos `bB1EMar..bB5EMar` informados por el controlador. La quinta bomba aporta únicamente cuando el controlador confirma `bB5EMar=1`.
+- El ingreso máximo a cámara se configura por separado en `45 mm/s`, preservando el comportamiento estacional sin acoplarlo a la calibración del consumo de reserva.
 - En `manual`, ambas aperturas proceden de los deslizadores.
-- En `automatic`, una hora real representa un día simulado completo. La válvula de salida sigue una curva continua con picos alrededor de las 06:00, 12:00 y 21:00 simuladas y jitter determinista por día, incluyendo jornadas de superconsumo ocasionales.
+- En `automatic`, una hora real representa un día simulado completo. El consumo sigue una curva continua con valles y picos alrededor de las 06:00, 12:00 y 21:00 simuladas. Las transiciones usan interpolación cosenoidal suave; la variación determinista deriva gradualmente hacia el día siguiente, sin salto a medianoche, e incluye jornadas de superconsumo ocasionales.
 - En `automatic`, la válvula de ingreso sigue un dial estacional continuo y fijo hasta que un operador lo modifica: solsticio de verano 20%, equinoccios 60% y solsticio de invierno 100%.
 - `yNvRes` queda acotado por `gResFn..gResSp`.
 - `yNvCamAsp` queda acotado por `gCamFn..gCamRb`.
+
+Los niveles se expresan en milímetros y la turbiedad en miligramos de masa sólida por litro. Los registros analógicos son enteros de 16 bits con signo. Las horas son contadores enteros directos: cada incremento representa una hora y el controlador los reinicia al desbordar. `Sp` significa nivel superior y `Fn`, fondo; delimitan una lectura sana. `bResFR` confirma positivamente que la reserva está fuera de ese rango: vale `1` solo si `eNvRes < gResFn` o `eNvRes > gResSp`.
 
 El histórico completo se consulta por:
 
@@ -225,7 +228,7 @@ la API genérica de inyección.
 
 ## Direccionamiento Modbus
 
-El mapa usa la fórmula ACE3600 `offset + Z*2048 + X*256 + Y`, con `X=0` para estas cuatro tablas SCA. La columna `Value` que aparece en la documentación es semántica del tag/mapped value, no una columna Modbus adicional a leer. Con `addressing.mode: modicon_reference`, las referencias documentadas se convierten a direcciones PDU cero-based para `pymodbus`:
+El mapa usa la fórmula ACE3600 `offset + Z*2048 + X*256 + Y`, con `X=0` para estas cuatro tablas SCA. `mval` significa mapped value, `iprm` integer parameter, `mbit` mapped bit y `bit`, bit. La columna `Value` es descriptiva: identifica la variable interna mapeada, no una columna Modbus adicional. Con `addressing.mode: modicon_reference`, las referencias documentadas se convierten a direcciones PDU cero-based para `pymodbus`:
 
 - `30001` -> `0`
 - `42049` -> `2048`
@@ -238,6 +241,8 @@ Direcciones relevantes de inyección:
 - `yB5Hs`: fila `34`, ref `42083`, PDU `2082`.
 - `yRFF`: fila `23`, ref `6168`, PDU `6167`.
 - `yB5Falla`: fila `42`, ref `6187`, PDU `6186`.
+
+La lectura `bResFR` ocupa la fila `4` de la tabla 2: referencia `14101`, PDU `4100`.
 
 ## Estructura del proyecto
 
@@ -297,15 +302,17 @@ vista esta en [`docs/VISTAS.md`](docs/VISTAS.md).
 - Los lotes se validan completos —tags, permisos, tipos, rangos y capacidad— antes de encolar, evitando escrituras parciales.
 - Las peticiones de comando se registran en eventos para trazabilidad.
 - Los errores de lectura marcan calidad `error`; si la señal queda vieja, se marca `stale` en el snapshot.
+- Toda señal booleana usa lógica positiva: `1` o `true` confirma literalmente el estado indicado por su nombre.
+- `cB#Aut` y `cB#Mr` son bits mantenidos por el controlador. Cada acción del operador genera una sola escritura de `0` o `1`; el tester no los reafirma periódicamente.
 
 
 ## Control de EMar
 
-En cada card de bomba existe un grupo de tres radios `generar EMar`: **Deshabilitado**, **Automático** y **Forzar**. Su única fuente de verdad es el modo guardado por `RuntimeState` y `PumpControlStore`, igual que la selectora Tablero/RTU usa `yB#RTU`. Ambos controles se respaldan en `runtime/pump_controls.json`. El snapshot y el WebSocket distribuyen el mismo estado a todos los clientes; el navegador no conserva una copia en `localStorage` ni mantiene estado operativo propio.
+En cada card de bomba existe un grupo de tres radios `generar EMar`: **Deshabilitado**, **Automático** y **Forzar**. Su única fuente de verdad es el modo guardado por `RuntimeState` y `PumpControlStore`. La selectora Tablero/RTU envía `yB#RTU` y muestra su readback confirmado por FC01; el indicador `RTU` separado muestra exclusivamente `bB#RTU`, leído del campo por FC02. La selección solicitada y el modo EMar se respaldan en `runtime/pump_controls.json`. El snapshot y el WebSocket distribuyen el mismo estado a todos los clientes; el navegador no conserva una copia en `localStorage` ni mantiene estado operativo propio.
 
 El servidor es el único dueño de `yB#EMar`: **Deshabilitado** escribe `0`, **Forzar** escribe `1` y **Automático** copia `bB#Arndo` (`1` si está activo; `0` en cualquier otro caso). La selección se escribe de inmediato, el valor persistido se vuelve a escribir al arrancar el servidor y la política se reafirma con cada actualización de `bB#Arndo`, independientemente de `runtime/injection_mode.txt`. El tag se excluye de la tabla y de la API genérica de inyección para que ningún cliente contradiga el modo seleccionado. `field-emulator` no gobierna ni recalcula este control.
 
-La animación de bomba destella verde/azul cuando el arranque y la marcha no coinciden: `bB#Arndo=1` con `bB#EMar=0`, o `bB#Arndo=0` con `bB#EMar=1`. La jerarquía de colores se mantiene: sin conexión gris, falla roja, transición verde/azul, marcha verde, parada azul.
+La animación de bomba destella verde/azul cuando `arrancando` y `en marcha` no coinciden: `bB#Arndo=1` con `bB#EMar=0`, o `bB#Arndo=0` con `bB#EMar=1`. La jerarquía de colores se mantiene: sin conexión gris, falla roja, transición verde/azul, marcha verde, parada azul.
 
 
 ## Logs
@@ -348,4 +355,4 @@ docker logs field-emulator --tail=100
 docker compose exec trasvase-tester python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/health', timeout=2)"
 ```
 
-El resultado `queued=True, written=False` en `/api/injection` solo significa que la escritura fue aceptada y encolada por el servicio web. La confirmación Modbus real aparece después en `runtime/logs/trasvase-tester.log` como `write_ok` o `write_error`.
+El resultado `queued=True, written=False` en `/api/injection` solo significa que la escritura fue aceptada y encolada por el servicio web. El resultado de escritura queda en los eventos `write_ok`/`write_error`; la lectura periódica posterior vuelve a tomar la tabla completa y publica el valor confirmado por el PLC en `snapshot.values`.

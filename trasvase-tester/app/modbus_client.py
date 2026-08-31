@@ -9,7 +9,8 @@ from typing import Any
 
 from pymodbus.client import ModbusTcpClient
 
-from .config import AppConfig, Signal, TableDefinition
+from .addressing import function_code_for
+from .config import AppConfig, TableDefinition
 from .state import RuntimeState, WriteRequest
 
 LOGGER = logging.getLogger("trasvase.modbus")
@@ -88,13 +89,23 @@ class ModbusPoller:
                 self._reset_schedule(polling)
                 self._polling_revision = int(polling["revision"])
 
+            # Las escrituras pendientes tienen prioridad para que una lectura
+            # lenta no retrase indefinidamente la inyeccion del siguiente tag.
+            try:
+                self._process_writes()
+            except Exception as exc:  # noqa: BLE001 - el poller debe continuar
+                error = f"{type(exc).__name__}: {exc}"
+                LOGGER.exception("modbus write cycle error: %s", error)
+                self.state.mark_poll_error(error)
+                self.state.add_event("write_cycle_error", error, level="error")
+                self._safe_close()
+                self._stop.wait(self.config.controller.reconnect_backoff_s)
+                continue
+
             now = time.monotonic()
             due_tables: list[TableDefinition] = []
             for table in self.config.tables.values():
-                signals = self._pollable_signals(table)
-                if not signals:
-                    continue
-                function_code = signals[0].function_code
+                function_code = function_code_for(table.kind)
                 control = polling["functions"][function_code]
                 if not control["enabled"]:
                     self._next_due.pop(function_code, None)
@@ -108,16 +119,6 @@ class ModbusPoller:
             if due_tables:
                 self.state.mark_poll_start()
                 self._poll_tables(due_tables)
-
-            try:
-                self._process_writes()
-            except Exception as exc:  # noqa: BLE001 - poller must not die
-                error = f"{type(exc).__name__}: {exc}"
-                LOGGER.exception("modbus write cycle error: %s", error)
-                self.state.mark_poll_error(error)
-                self.state.add_event("write_cycle_error", error, level="error")
-                self._safe_close()
-                self._stop.wait(self.config.controller.reconnect_backoff_s)
 
             self._stop.wait(0.1)
 
@@ -175,10 +176,7 @@ class ModbusPoller:
         except Exception as exc:  # noqa: BLE001
             error = f"{type(exc).__name__}: {exc}"
             for table in tables:
-                signals = self._pollable_signals(table)
-                if not signals:
-                    continue
-                function_code = signals[0].function_code
+                function_code = function_code_for(table.kind)
                 self.state.polling_control.mark_attempt(function_code)
                 self.state.polling_control.mark_error(function_code, error)
                 self.state.mark_table_error(table.name, error)
@@ -191,10 +189,7 @@ class ModbusPoller:
         successes = 0
         errors: list[str] = []
         for table in tables:
-            signals = self._pollable_signals(table)
-            if not signals:
-                continue
-            function_code = signals[0].function_code
+            function_code = function_code_for(table.kind)
             self.state.polling_control.mark_attempt(function_code)
             try:
                 updates = self._read_table(table)
@@ -221,34 +216,20 @@ class ModbusPoller:
             if self._client is not None and not self._client.connected:
                 self._safe_close()
 
-    @staticmethod
-    def _pollable_signals(table: TableDefinition) -> list[Signal]:
-        # Las zonas y* son memoria de entrada para inyección hacia el PLC.
-        # No se leen para representar el estado del proceso: el feedback oficial
-        # siempre son sus análogas reales e*/b* del intercambio genuino.
-        return [sig for sig in table.signals if not sig.facade]
-
-    @classmethod
-    def _poll_count(cls, table: TableDefinition) -> int:
-        signals = cls._pollable_signals(table)
-        if not signals:
-            return 0
-        return max(sig.row for sig in signals) + 1
-
     def _read_table(self, table: TableDefinition) -> dict[str, Any]:
         if self._client is None:
             raise RuntimeError("Cliente Modbus no inicializado")
         slave = self.config.controller.unit_id
-        signals = self._pollable_signals(table)
-        read_count = self._poll_count(table)
+        signals = table.signals
+        read_count = table.count
         if read_count <= 0:
-            return {}
+            raise ValueError(f"La tabla {table.name} declara un count invalido: {read_count}")
 
         LOGGER.info(
             "modbus read table=%s kind=%s fc=%s ref_start=%s pdu_start=%s count=%s unit_id=%s",
             table.name,
             table.kind,
-            signals[0].function_code if signals else "?",
+            function_code_for(table.kind),
             table.start_ref,
             table.start_pdu,
             read_count,
@@ -264,6 +245,7 @@ class ModbusPoller:
             )
             self._raise_on_error(result)
             raw_values = list(result.registers)
+            self._require_complete_response(table, raw_values, read_count)
             return {
                 sig.tag: _decode_register(raw_values[sig.row], sig.data_type)
                 for sig in signals
@@ -278,6 +260,7 @@ class ModbusPoller:
             )
             self._raise_on_error(result)
             raw_values = list(result.registers)
+            self._require_complete_response(table, raw_values, read_count)
             return {
                 sig.tag: _decode_register(raw_values[sig.row], sig.data_type)
                 for sig in signals
@@ -292,6 +275,7 @@ class ModbusPoller:
             )
             self._raise_on_error(result)
             raw_bits = list(result.bits)[: read_count]
+            self._require_complete_response(table, raw_bits, read_count)
             return {sig.tag: bool(raw_bits[sig.row]) for sig in signals}
 
         if table.kind == "coil":
@@ -303,9 +287,22 @@ class ModbusPoller:
             )
             self._raise_on_error(result)
             raw_bits = list(result.bits)[: read_count]
+            self._require_complete_response(table, raw_bits, read_count)
             return {sig.tag: bool(raw_bits[sig.row]) for sig in signals}
 
         raise ValueError(f"Tipo de tabla no soportado: {table.kind}")
+
+    @staticmethod
+    def _require_complete_response(
+        table: TableDefinition,
+        values: list[Any],
+        expected_count: int,
+    ) -> None:
+        if len(values) < expected_count:
+            raise ValueError(
+                f"Respuesta incompleta para {table.name}: "
+                f"esperados={expected_count} recibidos={len(values)}"
+            )
 
     @staticmethod
     def _raise_on_error(result: Any) -> None:
@@ -409,11 +406,15 @@ class SimulationPoller:
         while not self._stop.is_set():
             self.state.mark_poll_start()
             t = time.monotonic() - self._t0
+            reserve_level = int(3300 + 1200 * math.sin(t / 31.0))
+            reserve_floor = int(self.config.signals_by_tag["gResFn"].default)
+            reserve_superior = int(self.config.signals_by_tag["gResSp"].default)
             updates: dict[str, Any] = {
                 "eNvCamAsp": int(2500 + 900 * math.sin(t / 13.0)),
-                "eNvRes": int(3300 + 1200 * math.sin(t / 31.0)),
+                "eNvRes": reserve_level,
                 "eTurb": int(20 + 5 * math.sin(t / 7.0)),
-                "bRFF": True,
+                "bRFF": False,
+                "bResFR": reserve_level < reserve_floor or reserve_level > reserve_superior,
             }
             for pump in range(1, 6):
                 running = (int(t / 8) + pump) % 5 < 2

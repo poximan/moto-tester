@@ -111,11 +111,13 @@ class FieldEmulator:
         self.internal_token = os.environ["INTERNAL_EMULATOR_TOKEN"]
         self.interval_ms = _env_int("FIELD_EMULATOR_INTERVAL_MS", 1000)
         self.pump_rate = _env_float("FIELD_EMULATOR_PUMP_RATE_PER_S", 12.0)
-        # Salida a 100% = 6 bombas-equivalentes. Así, con 3 bombas en marcha
-        # y válvula de reserva al 50%, el caudal de salida empata el ingreso.
-        self.outlet_rate = _env_float("FIELD_EMULATOR_OUTLET_RATE_PER_S", self.pump_rate * 6.0)
-        self.inlet_pipe_ratio = _clamp(_env_float("FIELD_EMULATOR_INLET_PIPE_RATIO", 5.0 / 8.0), 0, 1)
-        self.inlet_rate = self.outlet_rate * self.inlet_pipe_ratio
+        # El consumo maximo equivale a 3,8 bombas. Cuatro bombas superan
+        # el pico por un 5% sin que el emulador decida cuales deben arrancar.
+        self.consumption_rate = _env_float(
+            "FIELD_EMULATOR_CONSUMPTION_RATE_PER_S",
+            self.pump_rate * 3.8,
+        )
+        self.inlet_rate = _env_float("FIELD_EMULATOR_INLET_RATE_PER_S", 45.0)
         self.state_path = Path(os.getenv("FIELD_EMULATOR_STATE_FILE", "/runtime/field_emulator_state.json"))
         self.history = LevelHistoryStore(
             Path(os.getenv("FIELD_EMULATOR_HISTORY_FILE", "/runtime/field_emulator_level_history.csv")),
@@ -131,12 +133,11 @@ class FieldEmulator:
         self.state: dict[str, Any] = self._initial_state()
         self._load_state_file()
         LOGGER.info(
-            "field emulator init api_url=%s interval_ms=%s inlet_rate=%s outlet_rate=%s inlet_pipe_ratio=%s pump_rate=%s state_file=%s history_file=%s",
+            "field emulator init api_url=%s interval_ms=%s inlet_rate=%s consumption_rate=%s pump_rate=%s state_file=%s history_file=%s",
             self.api_url,
             self.interval_ms,
             self.inlet_rate,
-            self.outlet_rate,
-            self.inlet_pipe_ratio,
+            self.consumption_rate,
             self.pump_rate,
             self.state_path,
             self.history.path,
@@ -229,9 +230,8 @@ class FieldEmulator:
                 "interval_ms": self.interval_ms,
                 "rates": {
                     "inlet_per_s": self.inlet_rate,
-                    "outlet_per_s": self.outlet_rate,
+                    "consumption_per_s": self.consumption_rate,
                     "pump_per_s": self.pump_rate,
-                    "inlet_pipe_ratio": self.inlet_pipe_ratio,
                 },
                 "history": self.history.metadata(),
             }
@@ -408,8 +408,18 @@ class FieldEmulator:
         cam = _num(cam_previous, _num(values.get("eNvCamAsp"), cam_floor))
         res = _num(res_previous, _num(values.get("eNvRes"), res_floor))
 
-        cam = _clamp(cam + (inlet_open / 100.0) * self.inlet_rate * dt - pump_count * self.pump_rate * dt, cam_floor, cam_ceiling)
-        res = _clamp(res + pump_count * self.pump_rate * dt - (outlet_open / 100.0) * self.outlet_rate * dt, res_floor, res_ceiling)
+        pumped_flow = pump_count * self.pump_rate
+        consumption_flow = (outlet_open / 100.0) * self.consumption_rate
+        cam = _clamp(
+            cam + ((inlet_open / 100.0) * self.inlet_rate - pumped_flow) * dt,
+            cam_floor,
+            cam_ceiling,
+        )
+        res = _clamp(
+            res + (pumped_flow - consumption_flow) * dt,
+            res_floor,
+            res_ceiling,
+        )
 
         write_values = {
             "yNvCamAsp": int(round(cam)),

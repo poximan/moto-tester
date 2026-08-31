@@ -3,13 +3,14 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 
 from .addressing import (
     AddressingMode,
     TableKind,
+    ace_reference,
     function_code_for,
     pdu_to_reference,
     reference_to_pdu,
@@ -19,6 +20,22 @@ from .addressing import (
 _ENV_LOADED = False
 _TRUE_VALUES = {"1", "true", "yes", "y", "on", "si", "sí"}
 _FALSE_VALUES = {"0", "false", "no", "n", "off"}
+
+ValueClass = Literal["mval", "iprm", "mbit", "bit"]
+
+_VALUE_CLASS_BY_KIND: dict[TableKind, ValueClass] = {
+    "input_register": "mval",
+    "holding_register": "iprm",
+    "discrete_input": "mbit",
+    "coil": "bit",
+}
+
+_EXCHANGE_TABLE_IDENTITIES: dict[str, tuple[int, TableKind, ValueClass]] = {
+    "analog_reads": (0, "input_register", "mval"),
+    "analog_setpoints": (1, "holding_register", "iprm"),
+    "digital_reads": (2, "discrete_input", "mbit"),
+    "digital_commands": (3, "coil", "bit"),
+}
 
 
 def _load_dotenv() -> None:
@@ -87,6 +104,8 @@ class Signal:
     reference: int
     pdu_address: int
     data_type: str | None = None
+    value_class: ValueClass | None = None
+    positive_logic: bool | None = None
     writable: bool = False
     default: int | bool | float | None = None
     facade: bool = False
@@ -123,7 +142,10 @@ class Signal:
 class TableDefinition:
     name: str
     label: str
+    exchange_id: int
     kind: TableKind
+    value_class: ValueClass
+    positive_logic: bool | None
     start_ref: int
     start_pdu: int
     count: int
@@ -229,6 +251,10 @@ def load_config(path: str | Path | None = None) -> AppConfig:
         )
 
     addressing_mode: AddressingMode = raw.get("addressing", {}).get("mode", "modicon_reference")
+    if addressing_mode != "modicon_reference":
+        raise ValueError(
+            "Las tablas SCA requieren addressing.mode=modicon_reference"
+        )
 
     controller = ControllerConfig(
         host=_env_required("MODBUS_HOST"),
@@ -255,21 +281,69 @@ def load_config(path: str | Path | None = None) -> AppConfig:
         internal_emulator_token=_env_required("INTERNAL_EMULATOR_TOKEN"),
     )
 
+    raw_tables = raw.get("tables", {})
+    if set(raw_tables) != set(_EXCHANGE_TABLE_IDENTITIES):
+        raise ValueError(
+            "El mapa debe declarar exactamente las cuatro tablas SCA: "
+            + ", ".join(_EXCHANGE_TABLE_IDENTITIES)
+        )
+
     tables: dict[str, TableDefinition] = {}
     signals_by_tag: dict[str, Signal] = {}
+    exchange_ids: set[int] = set()
 
-    for table_name, table_raw in raw.get("tables", {}).items():
+    for table_name, table_raw in raw_tables.items():
         kind: TableKind = table_raw["kind"]
-        start_ref = int(table_raw.get("start_ref", 0))
-        count = int(table_raw.get("count", 0))
-        if count == 0:
-            start_pdu = 0
-        else:
-            start_pdu = reference_to_pdu(start_ref, kind, addressing_mode)
+        exchange_id = int(table_raw["exchange_id"])
+        if exchange_id in exchange_ids:
+            raise ValueError(f"Identificador de intercambio duplicado: {exchange_id}")
+        exchange_ids.add(exchange_id)
+        value_class: ValueClass = table_raw["value_class"]
+        expected_identity = _EXCHANGE_TABLE_IDENTITIES[table_name]
+        if (exchange_id, kind, value_class) != expected_identity:
+            raise ValueError(
+                f"Identidad invalida en {table_name}: "
+                f"esperada={expected_identity} recibida={(exchange_id, kind, value_class)}"
+            )
+        expected_value_class = _VALUE_CLASS_BY_KIND.get(kind)
+        if value_class != expected_value_class:
+            raise ValueError(
+                f"Clase de valor invalida en {table_name}: "
+                f"kind={kind} requiere value_class={expected_value_class}, recibido={value_class}"
+            )
+
+        positive_logic = table_raw.get("positive_logic")
+        if value_class in {"mbit", "bit"}:
+            if positive_logic is not True:
+                raise ValueError(f"La tabla digital {table_name} debe declarar positive_logic=true")
+        elif positive_logic is not None:
+            raise ValueError(f"La tabla analogica {table_name} no admite positive_logic")
+
+        start_ref = int(table_raw["start_ref"])
+        expected_start_ref = ace_reference(kind, exchange_id, 0)
+        if start_ref != expected_start_ref:
+            raise ValueError(
+                f"Base invalida en {table_name}: id={exchange_id} kind={kind} "
+                f"requiere start_ref={expected_start_ref}, recibido={start_ref}"
+            )
+        count = int(table_raw["count"])
+        if count <= 0:
+            raise ValueError(f"Cantidad invalida en {table_name}: count={count}")
+        start_pdu = reference_to_pdu(start_ref, kind, addressing_mode)
         table_writable = bool(table_raw.get("writable", False))
         data_type = table_raw.get("data_type")
+        expected_writable = value_class in {"iprm", "bit"}
+        if table_writable != expected_writable:
+            raise ValueError(
+                f"Permiso invalido en {table_name}: writable debe ser {expected_writable}"
+            )
+        if value_class in {"mval", "iprm"} and data_type != "int16":
+            raise ValueError(f"La tabla analogica {table_name} debe declarar data_type=int16")
+        if value_class in {"mbit", "bit"} and data_type is not None:
+            raise ValueError(f"La tabla digital {table_name} no admite data_type")
         optional = bool(table_raw.get("optional", False))
         table_signals: list[Signal] = []
+        table_rows: set[int] = set()
 
         for signal_raw in table_raw.get("signals", []):
             row = int(signal_raw["row"])
@@ -279,7 +353,31 @@ def load_config(path: str | Path | None = None) -> AppConfig:
                 raise ValueError(
                     f"Fila {row} de {table_name}.{signal_raw.get('tag')} excede count={count}"
                 )
+            if row in table_rows:
+                raise ValueError(f"Fila duplicada en {table_name}: {row}")
+            table_rows.add(row)
             tag = str(signal_raw["tag"])
+            mapped_value = signal_raw.get("mapped_value")
+            if value_class in {"mval", "mbit"} and not mapped_value:
+                raise ValueError(
+                    f"La señal mapeada {table_name}.{tag} requiere mapped_value"
+                )
+            if value_class in {"iprm", "bit"} and mapped_value is not None:
+                raise ValueError(
+                    f"La señal {table_name}.{tag} no admite mapped_value para value_class={value_class}"
+                )
+            if value_class in {"iprm", "bit"} and "default" not in signal_raw:
+                raise ValueError(
+                    f"La señal escribible {table_name}.{tag} requiere default explicito"
+                )
+            default = signal_raw.get("default")
+            if value_class == "iprm":
+                if isinstance(default, bool) or not isinstance(default, int):
+                    raise ValueError(f"El parametro {table_name}.{tag} requiere default entero")
+                if not -32768 <= default <= 32767:
+                    raise ValueError(f"El parametro {table_name}.{tag} excede el rango int16")
+            if value_class == "bit" and not isinstance(default, bool):
+                raise ValueError(f"El bit {table_name}.{tag} requiere default booleano")
             reference = start_ref + row if count else row
             pdu_address = reference_to_pdu(reference, kind, addressing_mode) if count else row
             write_kind, write_reference, write_pdu_address = _resolve_write_address(
@@ -295,12 +393,14 @@ def load_config(path: str | Path | None = None) -> AppConfig:
                 row=row,
                 tag=tag,
                 label=str(signal_raw.get("label", tag)),
-                mapped_value=signal_raw.get("mapped_value"),
+                mapped_value=mapped_value,
                 reference=reference,
                 pdu_address=pdu_address,
                 data_type=signal_raw.get("data_type", data_type),
+                value_class=value_class,
+                positive_logic=positive_logic,
                 writable=bool(signal_raw.get("writable", table_writable)),
-                default=signal_raw.get("default"),
+                default=default,
                 facade=bool(signal_raw.get("facade", table_name.startswith("facade_"))),
                 write_kind=write_kind,
                 write_reference=write_reference,
@@ -315,10 +415,21 @@ def load_config(path: str | Path | None = None) -> AppConfig:
             signals_by_tag[tag] = signal
             table_signals.append(signal)
 
+        if not table_signals:
+            raise ValueError(f"La tabla {table_name} no declara señales")
+        if max(table_rows) != count - 1:
+            raise ValueError(
+                f"Count invalido en {table_name}: la ultima fila usada es {max(table_rows)} "
+                f"y count={count}"
+            )
+
         tables[table_name] = TableDefinition(
             name=table_name,
             label=str(table_raw.get("label", table_name)),
+            exchange_id=exchange_id,
             kind=kind,
+            value_class=value_class,
+            positive_logic=positive_logic,
             start_ref=start_ref,
             start_pdu=start_pdu,
             count=count,

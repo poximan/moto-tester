@@ -39,12 +39,17 @@ export interface SignalDefinition {
   facade: boolean;
   write_kind: string | null;
   injects_tag: string | null;
-  data_type: string;
+  data_type: string | null;
+  value_class: "mval" | "iprm" | "mbit" | "bit";
+  positive_logic: boolean | null;
 }
 
 export interface TableDefinition {
   label: string;
+  exchange_id: number;
   kind: string;
+  value_class: "mval" | "iprm" | "mbit" | "bit";
+  positive_logic: boolean | null;
   start_ref: number;
   start_pdu: number;
   count: number;
@@ -134,9 +139,8 @@ export interface EmulatorState {
   };
   rates?: {
     inlet_per_s: number;
-    outlet_per_s: number;
+    consumption_per_s: number;
     pump_per_s: number;
-    inlet_pipe_ratio: number;
   };
   history?: {
     revision: number;

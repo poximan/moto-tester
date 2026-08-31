@@ -52,7 +52,10 @@ class OverviewService:
             "tables": {
                 name: {
                     "label": table.label,
+                    "exchange_id": table.exchange_id,
                     "kind": table.kind,
+                    "value_class": table.value_class,
+                    "positive_logic": table.positive_logic,
                     "start_ref": table.start_ref,
                     "start_pdu": table.start_pdu,
                     "count": table.count,
@@ -77,6 +80,8 @@ class OverviewService:
                             "injects_tag": signal.injects_tag,
                             "injection_group": signal.injection_group,
                             "data_type": signal.data_type,
+                            "value_class": signal.value_class,
+                            "positive_logic": signal.positive_logic,
                             "default": signal.default,
                         }
                         for signal in table.signals

@@ -208,7 +208,7 @@ class RuntimeState:
         now = time.time()
         with self._lock:
             for item in self._values.values():
-                if item.table == table_name and not item.facade:
+                if item.table == table_name:
                     item.quality = "error"
                     item.updated_at = now
                     item.error = error

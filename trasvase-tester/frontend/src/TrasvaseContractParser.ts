@@ -19,6 +19,18 @@ export class TrasvaseContractParser {
     const tables = this.requireRecord(record.tables, "config.tables");
     for (const [name, value] of Object.entries(tables)) {
       const table = this.requireRecord(value, `config.tables.${name}`);
+      this.requireNumber(table, "exchange_id", `config.tables.${name}`);
+      const valueClass = this.requireString(table, "value_class", `config.tables.${name}`);
+      if (!["mval", "iprm", "mbit", "bit"].includes(valueClass)) {
+        throw new Error(`Contrato inválido: config.tables.${name}.value_class no es válido`);
+      }
+      if (["mbit", "bit"].includes(valueClass)) {
+        if (table.positive_logic !== true) {
+          throw new Error(`Contrato inválido: config.tables.${name}.positive_logic debe ser true`);
+        }
+      } else if (table.positive_logic !== null) {
+        throw new Error(`Contrato inválido: config.tables.${name}.positive_logic debe ser null`);
+      }
       if (!Array.isArray(table.signals)) {
         throw new Error(`Contrato inválido: config.tables.${name}.signals debe ser una lista`);
       }
@@ -26,6 +38,12 @@ export class TrasvaseContractParser {
         const entry = this.requireRecord(signal, `config.tables.${name}.signals[${index}]`);
         this.requireString(entry, "tag", `config.tables.${name}.signals[${index}]`);
         this.requireNumber(entry, "row", `config.tables.${name}.signals[${index}]`);
+        if (entry.value_class !== valueClass) {
+          throw new Error(`Contrato inválido: config.tables.${name}.signals[${index}].value_class no coincide con la tabla`);
+        }
+        if (entry.positive_logic !== table.positive_logic) {
+          throw new Error(`Contrato inválido: config.tables.${name}.signals[${index}].positive_logic no coincide con la tabla`);
+        }
       });
     }
     return record as unknown as TesterConfig;

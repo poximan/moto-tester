@@ -7,7 +7,9 @@ addressing:
 tables:
   analog_reads:
     label: SCA - lectura AN [0]
+    exchange_id: 0
     kind: input_register
+    value_class: mval
     start_ref: 30001
     count: 26
     data_type: int16
@@ -47,7 +49,9 @@ tables:
       label: Bomba 5 horas
   analog_setpoints:
     label: SCA - consigna AN [1]
+    exchange_id: 1
     kind: holding_register
+    value_class: iprm
     start_ref: 42049
     count: 35
     data_type: int16
@@ -55,7 +59,7 @@ tables:
     signals:
     - row: 0
       tag: gResSp
-      label: Reserva SP
+      label: Reserva nivel superior
       default: 6000
     - row: 1
       tag: gResRb
@@ -103,7 +107,7 @@ tables:
       default: 600
     - row: 15
       tag: gResFn
-      label: Reserva fin
+      label: Reserva fondo
       default: -1
     - row: 18
       tag: gCamRb
@@ -119,7 +123,7 @@ tables:
       default: 600
     - row: 21
       tag: gCamFn
-      label: Cámara fin
+      label: Cámara fondo
       default: 0
     - row: 27
       tag: yNvCamAsp
@@ -187,7 +191,10 @@ tables:
       injection_group: analog_reads
   digital_reads:
     label: SCA - lectura DI [2]
+    exchange_id: 2
     kind: discrete_input
+    value_class: mbit
+    positive_logic: true
     start_ref: 14097
     count: 77
     writable: false
@@ -195,7 +202,11 @@ tables:
     - row: 0
       tag: bRFF
       mapped_value: iRFF
-      label: Referencia/Fallo general
+      label: Relé de falta de fase
+    - row: 4
+      tag: bResFR
+      mapped_value: ResFR
+      label: Reserva fuera de rango
     - row: 5
       tag: bResRb
       mapped_value: ResRb
@@ -259,7 +270,7 @@ tables:
     - row: 32
       tag: bB1Arndo
       mapped_value: mB1Arr
-      label: Bomba 1 arranque
+      label: Bomba 1 arrancando
     - row: 37
       tag: bB2RTU
       mapped_value: iB2RTU
@@ -283,7 +294,7 @@ tables:
     - row: 43
       tag: bB2Arndo
       mapped_value: mB2Arr
-      label: Bomba 2 arranque
+      label: Bomba 2 arrancando
     - row: 48
       tag: bB3RTU
       mapped_value: iB3RTU
@@ -307,7 +318,7 @@ tables:
     - row: 54
       tag: bB3Arndo
       mapped_value: mB3Arr
-      label: Bomba 3 arranque
+      label: Bomba 3 arrancando
     - row: 59
       tag: bB4RTU
       mapped_value: iB4RTU
@@ -331,7 +342,7 @@ tables:
     - row: 65
       tag: bB4Arndo
       mapped_value: mB4Arr
-      label: Bomba 4 arranque
+      label: Bomba 4 arrancando
     - row: 70
       tag: bB5RTU
       mapped_value: iB5RTU
@@ -355,10 +366,13 @@ tables:
     - row: 76
       tag: bB5Arndo
       mapped_value: mB5Arr
-      label: Bomba 5 arranque
+      label: Bomba 5 arrancando
   digital_commands:
     label: SCA - comando DI [3]
+    exchange_id: 3
     kind: coil
+    value_class: bit
+    positive_logic: true
     start_ref: 6145
     count: 43
     writable: true
@@ -405,7 +419,7 @@ tables:
       default: false
     - row: 23
       tag: yRFF
-      label: Inyección lectura digital - Referencia/Fallo general
+      label: Inyección lectura digital - Relé de falta de fase
       facade: true
       writable: true
       default: false

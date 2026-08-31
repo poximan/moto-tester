@@ -88,17 +88,32 @@ def _base_daily_demand(hour: float) -> float:
     return _DEMAND_ANCHORS[0][1]
 
 
+def _daily_variation(day_index: int) -> tuple[float, bool, float, float]:
+    randomizer = random.Random(day_index * 1_000_003 + 97)
+    return (
+        randomizer.uniform(-4.0, 4.0),
+        randomizer.random() < 0.38,
+        randomizer.choice((6.0, 12.0, 21.0)),
+        randomizer.uniform(8.0, 18.0),
+    )
+
+
 def daily_consumption_pct(hour: float, day_index: int) -> float:
     """Demanda continua y jitter determinista para un día simulado."""
-    base = _base_daily_demand(hour)
-    randomizer = random.Random(day_index * 1_000_003 + 97)
-    daily_offset = randomizer.uniform(-4.0, 4.0)
-    super_consumption = randomizer.random() < 0.38
-    selected_peak = randomizer.choice((6.0, 12.0, 21.0))
-    peak_boost = randomizer.uniform(8.0, 18.0)
+    normalized_hour = hour % 24.0
+    base = _base_daily_demand(normalized_hour)
+    current_offset, super_consumption, selected_peak, peak_boost = _daily_variation(
+        day_index
+    )
+    next_offset, _, _, _ = _daily_variation(day_index + 1)
+    daily_offset = _cosine_interpolation(
+        current_offset,
+        next_offset,
+        normalized_hour / 24.0,
+    )
 
     boost = 0.0
-    distance = abs((hour - selected_peak + 12.0) % 24.0 - 12.0)
+    distance = abs((normalized_hour - selected_peak + 12.0) % 24.0 - 12.0)
     if super_consumption and distance <= 2.0:
         boost = peak_boost * (0.5 + 0.5 * math.cos(math.pi * distance / 2.0))
 

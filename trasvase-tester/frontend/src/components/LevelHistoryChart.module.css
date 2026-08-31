@@ -23,6 +23,60 @@
   font-size: var(--sc-font-size-sm);
   white-space: nowrap;
 }
+.interactionBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sc-space-3);
+  margin-bottom: var(--sc-space-4);
+  padding: var(--sc-space-3);
+  border: 1px solid var(--sc-color-border);
+  border-radius: var(--sc-radius-md);
+  background: var(--sc-color-surface);
+}
+.modeControls {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: var(--sc-space-1);
+}
+.modeButton,
+.resetButton {
+  min-height: 2.25rem;
+  padding: 0 var(--sc-space-3);
+  border: 1px solid var(--sc-color-border);
+  border-radius: var(--sc-radius-sm);
+  background: transparent;
+  color: var(--sc-color-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--sc-font-size-sm);
+  font-weight: 700;
+}
+.modeButton:hover:not(:disabled),
+.resetButton:hover:not(:disabled) {
+  border-color: var(--sc-color-primary);
+}
+.modeButton:focus-visible,
+.resetButton:focus-visible {
+  outline: 2px solid var(--sc-color-primary);
+  outline-offset: 2px;
+}
+.modeButtonActive {
+  border-color: var(--sc-color-primary);
+  background: var(--sc-color-primary);
+  color: #ffffff;
+}
+.modeButton:disabled,
+.resetButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+.interactionHint {
+  margin: 0;
+  color: var(--sc-color-text-muted);
+  font-size: var(--sc-font-size-sm);
+  text-align: right;
+}
 .gridCharts {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -43,8 +97,17 @@
   width: 100%;
   height: auto;
   overflow: visible;
+  touch-action: none;
+  user-select: none;
+}
+.zoomMode {
   cursor: crosshair;
-  touch-action: pan-y;
+}
+.panMode {
+  cursor: grab;
+}
+.dragging {
+  cursor: grabbing;
 }
 .grid {
   stroke: var(--sc-color-border);
@@ -85,6 +148,14 @@
   stroke-width: 3;
   vector-effect: non-scaling-stroke;
 }
+.zoomSelection {
+  fill: rgb(2 132 199 / 18%);
+  pointer-events: none;
+  stroke: #0284c7;
+  stroke-dasharray: 5 4;
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
 .tooltip {
   fill: #0f172a;
   stroke: #94a3b8;
@@ -120,5 +191,16 @@
   }
   .heading span {
     white-space: normal;
+  }
+  .interactionBar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .modeControls {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .interactionHint {
+    text-align: left;
   }
 }

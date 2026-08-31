@@ -18,8 +18,8 @@ def configure_runtime_files(monkeypatch, tmp_path):
 
 def test_inlet_valve_writes_yNvCamAsp_and_outlet_valve_writes_yNvRes(monkeypatch, tmp_path):
     configure_runtime_files(monkeypatch, tmp_path)
-    monkeypatch.setenv("FIELD_EMULATOR_OUTLET_RATE_PER_S", "90")
-    monkeypatch.setenv("FIELD_EMULATOR_INLET_PIPE_RATIO", "1")
+    monkeypatch.setenv("FIELD_EMULATOR_INLET_RATE_PER_S", "90")
+    monkeypatch.setenv("FIELD_EMULATOR_CONSUMPTION_RATE_PER_S", "90")
     monkeypatch.setenv("FIELD_EMULATOR_PUMP_RATE_PER_S", "12")
     emu = FieldEmulator()
     emu.state["manual_inlet_open_pct"] = 100
@@ -67,7 +67,7 @@ def test_inlet_valve_writes_yNvCamAsp_and_outlet_valve_writes_yNvRes(monkeypatch
 
 def test_field_emulator_initializes_from_genuine_feedback_not_y_memory(monkeypatch, tmp_path):
     configure_runtime_files(monkeypatch, tmp_path)
-    monkeypatch.setenv("FIELD_EMULATOR_OUTLET_RATE_PER_S", "0")
+    monkeypatch.setenv("FIELD_EMULATOR_CONSUMPTION_RATE_PER_S", "0")
     monkeypatch.setenv("FIELD_EMULATOR_PUMP_RATE_PER_S", "0")
     emu = FieldEmulator()
     emu.state["yNvCamAsp"] = None
@@ -103,15 +103,15 @@ def test_field_emulator_initializes_from_genuine_feedback_not_y_memory(monkeypat
     assert posts[0][1]["values"] == {"yNvCamAsp": 1234, "yNvRes": 4321}
 
 
-def test_reservoir_valve_50_balances_three_running_pumps_by_default(monkeypatch, tmp_path):
+def test_four_pumps_slightly_beat_maximum_consumption_by_default(monkeypatch, tmp_path):
     configure_runtime_files(monkeypatch, tmp_path)
     monkeypatch.setenv("FIELD_EMULATOR_PUMP_RATE_PER_S", "12")
-    monkeypatch.delenv("FIELD_EMULATOR_OUTLET_RATE_PER_S", raising=False)
-    monkeypatch.setenv("FIELD_EMULATOR_INLET_PIPE_RATIO", "0")
+    monkeypatch.delenv("FIELD_EMULATOR_CONSUMPTION_RATE_PER_S", raising=False)
+    monkeypatch.setenv("FIELD_EMULATOR_INLET_RATE_PER_S", "0")
     emu = FieldEmulator()
-    assert emu.outlet_rate == 72
+    assert emu.consumption_rate == pytest.approx(45.6)
     emu.state["manual_inlet_open_pct"] = 0
-    emu.state["manual_outlet_open_pct"] = 50
+    emu.state["manual_outlet_open_pct"] = 100
     emu.state["yNvCamAsp"] = 2000
     emu.state["yNvRes"] = 3000
     emu._last_tick = time.time() - 1.0
@@ -128,7 +128,7 @@ def test_reservoir_valve_50_balances_three_running_pumps_by_default(monkeypatch,
             "bB1EMar": {"value": True},
             "bB2EMar": {"value": True},
             "bB3EMar": {"value": True},
-            "bB4EMar": {"value": False},
+            "bB4EMar": {"value": True},
             "bB5EMar": {"value": False},
         },
     }
@@ -138,7 +138,7 @@ def test_reservoir_valve_50_balances_three_running_pumps_by_default(monkeypatch,
 
     emu._tick()
 
-    assert posts[0][1]["values"]["yNvRes"] == 3000
+    assert 3000 < posts[0][1]["values"]["yNvRes"] <= 3003
 
 
 def test_field_emulator_pauses_writes_while_plc_is_disconnected(monkeypatch, tmp_path):
@@ -187,6 +187,23 @@ def test_daily_consumption_is_deterministic_and_peaks_near_key_hours():
     assert daily_consumption_pct(6, day) > daily_consumption_pct(2, day)
     assert daily_consumption_pct(12, day) > daily_consumption_pct(17, day)
     assert daily_consumption_pct(21, day) > daily_consumption_pct(17, day)
+
+
+def test_daily_consumption_has_no_jumps_between_peaks_and_valleys():
+    day = 456_789
+    epsilon = 0.000001
+    transition_hours = (
+        2.0, 3.5, 4.0, 6.0, 8.0, 9.0, 10.0, 12.0,
+        14.0, 15.0, 17.0, 18.5, 19.0, 21.0, 23.0,
+    )
+    for transition_hour in transition_hours:
+        before = daily_consumption_pct(transition_hour - epsilon, day)
+        after = daily_consumption_pct(transition_hour + epsilon, day)
+        assert before == pytest.approx(after, abs=0.001)
+
+    end_of_day = daily_consumption_pct(24.0 - epsilon, day)
+    start_of_next_day = daily_consumption_pct(epsilon, day + 1)
+    assert end_of_day == pytest.approx(start_of_next_day, abs=0.001)
 
 
 def test_history_samples_every_30_seconds_and_keeps_requested_window(tmp_path):
