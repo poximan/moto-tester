@@ -13,8 +13,17 @@ services:
       additional_contexts:
         frontend-foundation: ../../platform/frontend-foundation
     container_name: moto-tester-trasvase-tester
-    env_file:
-      - .env
+    environment:
+      MODBUS_HOST: ${MODBUS_HOST}
+      MODBUS_PORT: ${MODBUS_PORT}
+      MODBUS_UNIT_ID: ${MODBUS_UNIT_ID}
+      MODBUS_TIMEOUT_S: ${MODBUS_TIMEOUT_S}
+      MODBUS_RECONNECT_BACKOFF_S: ${MODBUS_RECONNECT_BACKOFF_S}
+      POLL_INTERVAL_MS: ${POLL_INTERVAL_MS}
+      POLL_MAX_STALE_MS: ${POLL_MAX_STALE_MS}
+      SIMULATION_MODE: ${SIMULATION_MODE}
+      FIELD_EMULATOR_URL: ${FIELD_EMULATOR_URL}
+      INTERNAL_EMULATOR_TOKEN: ${INTERNAL_EMULATOR_TOKEN}
     volumes:
       - ./runtime:/app/runtime
     restart: unless-stopped
@@ -30,10 +39,18 @@ services:
       context: .
       dockerfile: field-emulator/Dockerfile
     container_name: moto-tester-field-emulator
-    env_file:
-      - .env
     environment:
       TESTER_API_URL: "http://trasvase-tester:8080"
+      INTERNAL_EMULATOR_TOKEN: ${INTERNAL_EMULATOR_TOKEN}
+      FIELD_EMULATOR_INTERVAL_MS: ${FIELD_EMULATOR_INTERVAL_MS}
+      FIELD_EMULATOR_INLET_OPEN_PCT: ${FIELD_EMULATOR_INLET_OPEN_PCT}
+      FIELD_EMULATOR_OUTLET_OPEN_PCT: ${FIELD_EMULATOR_OUTLET_OPEN_PCT}
+      FIELD_EMULATOR_INLET_RATE_PER_S: ${FIELD_EMULATOR_INLET_RATE_PER_S}
+      FIELD_EMULATOR_CONSUMPTION_RATE_PER_S: ${FIELD_EMULATOR_CONSUMPTION_RATE_PER_S}
+      FIELD_EMULATOR_PUMP_RATE_PER_S: ${FIELD_EMULATOR_PUMP_RATE_PER_S}
+      FIELD_EMULATOR_SEASON_POSITION_PCT: ${FIELD_EMULATOR_SEASON_POSITION_PCT}
+      FIELD_EMULATOR_HISTORY_INTERVAL_S: ${FIELD_EMULATOR_HISTORY_INTERVAL_S}
+      FIELD_EMULATOR_HISTORY_SIMULATED_DAYS: ${FIELD_EMULATOR_HISTORY_SIMULATED_DAYS}
     depends_on:
       trasvase-tester:
         condition: service_healthy
