@@ -221,7 +221,7 @@ def _resolve_write_address(
         write_pdu_address = reference_to_pdu(write_reference, write_kind, addressing_mode)
         return write_kind, write_reference, write_pdu_address
 
-    # Alias por mismo PDU: útil para escribir por FC05/FC06 la memoria que se observa
+    # Alias por mismo PDU: util para escribir por FC05/FC06 la memoria que se observa
     # como 1x/3x en la fachada del PLC.
     write_pdu_address = read_pdu_address
     write_reference = pdu_to_reference(write_pdu_address, write_kind, addressing_mode)

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-import time
+from moto_time import clock
 from pathlib import Path
 from threading import Lock
 from typing import Any
@@ -167,14 +167,14 @@ class PollingControlStore:
         normalized = self.normalize_function_code(function_code)
         with self._lock:
             item = self._status[normalized]
-            item["last_attempt_at"] = time.time()
+            item["last_attempt_at"] = clock.epoch_seconds()
             item["poll_count"] += 1
 
     def mark_success(self, function_code: str) -> None:
         normalized = self.normalize_function_code(function_code)
         with self._lock:
             item = self._status[normalized]
-            item["last_success_at"] = time.time()
+            item["last_success_at"] = clock.epoch_seconds()
             item["last_error"] = None
 
     def mark_error(self, function_code: str, error: str) -> None:

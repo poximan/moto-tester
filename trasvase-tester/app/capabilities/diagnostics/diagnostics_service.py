@@ -4,11 +4,13 @@ from typing import Any
 
 from ...logging_utils import log_dir, tail_file
 from ...state import RuntimeState
+from ...adapters.emulator_client import EmulatorClient
 
 
 class DiagnosticsService:
-    def __init__(self, state: RuntimeState):
+    def __init__(self, state: RuntimeState, emulator: EmulatorClient):
         self.state = state
+        self.emulator = emulator
 
     def events(self) -> dict[str, Any]:
         return {"events": self.state.snapshot()["events"]}
@@ -41,9 +43,12 @@ class DiagnosticsService:
                     "modified_at": stat.st_mtime,
                 }
             )
+        files.append({"name": "field-emulator", "filename": "field-emulator.log", "source": "http"})
         return {"log_dir": str(base), "files": files}
 
     def read_log(self, log_name: str, lines: int) -> dict[str, Any]:
+        if log_name in {"field-emulator", "field-emulator.log"}:
+            return self.emulator.request("GET", "/api/v1/logs")
         safe_name = log_name.replace("/", "").replace(chr(92), "")
         if safe_name.endswith(".log"):
             safe_name = safe_name[:-4]

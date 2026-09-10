@@ -1,5 +1,4 @@
-import time
-
+from moto_time import clock
 
 def monotonic_seconds() -> float:
-    return time.monotonic()
+    return clock.monotonic_seconds()

@@ -89,7 +89,7 @@ app.include_router(
         access_guard.require_edge,
     ).router
 )
-app.include_router(DiagnosticsApi(DiagnosticsService(state)).router)
+app.include_router(DiagnosticsApi(DiagnosticsService(state, emulator_client)).router)
 app.include_router(
     InjectionApi(
         InjectionService(config, state, LOGGER),

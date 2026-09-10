@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 import json
+import math
+from copy import deepcopy
+from contextlib import contextmanager
 import logging
+from logging.handlers import RotatingFileHandler
+from moto_time import PresentationFormatter
 import os
 import threading
-import time
+from moto_time import clock
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -19,80 +24,55 @@ from .simulation import daily_consumption_pct, seasonal_inlet_pct, simulated_clo
 
 
 def _resolve_log_dir() -> Path:
-    preferred = Path(os.getenv("LOG_DIR", "/runtime/logs"))
-    try:
-        preferred.mkdir(parents=True, exist_ok=True)
-        return preferred
-    except OSError:
-        fallback = Path.cwd() / "runtime" / "logs"
-        fallback.mkdir(parents=True, exist_ok=True)
-        return fallback
+    target = Path("/runtime/logs")
+    target.mkdir(parents=True, exist_ok=True)
+    return target
 
 
-LOG_DIR = _resolve_log_dir()
 LOGGER = logging.getLogger("field-emulator")
-LOGGER.setLevel(logging.INFO)
-_LOG_PATH = LOG_DIR / "field-emulator.log"
-if not any(isinstance(h, logging.FileHandler) and Path(h.baseFilename) == _LOG_PATH for h in LOGGER.handlers):
-    _handler = logging.FileHandler(_LOG_PATH, encoding="utf-8")
-    _handler.setFormatter(
-        logging.Formatter(
+_LOG_PATH: Path | None = None
+
+
+def configure_logging() -> None:
+    global _LOG_PATH
+    _LOG_PATH = _resolve_log_dir() / "field-emulator.log"
+    LOGGER.setLevel(logging.INFO)
+    if not any(isinstance(handler, logging.FileHandler) and Path(handler.baseFilename) == _LOG_PATH
+               for handler in LOGGER.handlers):
+        handler = RotatingFileHandler(_LOG_PATH, maxBytes=10_000_000, backupCount=3, encoding="utf-8")
+        handler.setFormatter(PresentationFormatter(
             "%(asctime)s.%(msecs)03d %(levelname)s [%(name)s] %(message)s",
             datefmt="%Y-%m-%d %H:%M:%S",
-        )
-    )
-    LOGGER.addHandler(_handler)
-LOGGER.propagate = True
+        ))
+        LOGGER.addHandler(handler)
+    LOGGER.propagate = True
 
 
-def _env_bool(name: str, default: bool) -> bool:
-    raw = os.getenv(name)
-    if raw is None or raw == "":
-        return default
-    return raw.strip().lower() in {"1", "true", "yes", "y", "on", "si", "sí"}
+def _required(name: str) -> str:
+    value = os.environ.get(name, "").strip()
+    if not value:
+        raise ValueError(f"Falta configuracion obligatoria: {name}")
+    return value
 
 
-def _env_float(name: str, default: float) -> float:
-    raw = os.getenv(name)
-    if raw is None or raw == "":
-        return default
-    return float(raw)
+def _env_float(name: str) -> float:
+    value = float(_required(name))
+    if not math.isfinite(value) or value < 0:
+        raise ValueError(f"Configuracion numerica invalida: {name}")
+    return value
 
 
-def _env_int(name: str, default: int) -> int:
-    raw = os.getenv(name)
-    if raw is None or raw == "":
-        return default
-    return int(raw)
+def _env_int(name: str) -> int:
+    value = int(_required(name))
+    if value <= 0:
+        raise ValueError(f"Configuracion debe ser positiva: {name}")
+    return value
 
 
 def _clamp(value: float, lower: float, upper: float) -> float:
     lo = min(lower, upper)
     hi = max(lower, upper)
     return max(lo, min(hi, value))
-
-
-def _num(value: Any, fallback: float) -> float:
-    try:
-        if isinstance(value, dict):
-            value = value.get("value")
-        if value is None:
-            return fallback
-        return float(value)
-    except (TypeError, ValueError):
-        return fallback
-
-
-def _bit(value: Any) -> bool:
-    if isinstance(value, dict):
-        value = value.get("value")
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, (int, float)):
-        return value != 0
-    if isinstance(value, str):
-        return value.strip().lower() in {"1", "true", "on", "yes", "si", "sí"}
-    return False
 
 
 class ValveBody(BaseModel):
@@ -106,28 +86,29 @@ class ControlBody(ValveBody):
 
 
 class FieldEmulator:
-    def __init__(self) -> None:
-        self.api_url = os.getenv("TESTER_API_URL", "http://trasvase-tester:8080").rstrip("/")
-        self.internal_token = os.environ["INTERNAL_EMULATOR_TOKEN"]
-        self.interval_ms = _env_int("FIELD_EMULATOR_INTERVAL_MS", 1000)
-        self.pump_rate = _env_float("FIELD_EMULATOR_PUMP_RATE_PER_S", 12.0)
+    def __init__(self, time_provider=clock) -> None:
+        self.clock = time_provider
+        self.api_url = _required("TESTER_API_URL").rstrip("/")
+        self.internal_token = _required("INTERNAL_EMULATOR_TOKEN")
+        self.interval_ms = _env_int("FIELD_EMULATOR_INTERVAL_MS")
+        self.pump_rate = _env_float("FIELD_EMULATOR_PUMP_RATE_PER_S")
         # El consumo maximo equivale a 3,8 bombas. Cuatro bombas superan
         # el pico por un 5% sin que el emulador decida cuales deben arrancar.
         self.consumption_rate = _env_float(
-            "FIELD_EMULATOR_CONSUMPTION_RATE_PER_S",
-            self.pump_rate * 3.8,
+            "FIELD_EMULATOR_CONSUMPTION_RATE_PER_S"
         )
-        self.inlet_rate = _env_float("FIELD_EMULATOR_INLET_RATE_PER_S", 45.0)
+        self.inlet_rate = _env_float("FIELD_EMULATOR_INLET_RATE_PER_S")
         self.state_path = Path(os.getenv("FIELD_EMULATOR_STATE_FILE", "/runtime/field_emulator_state.json"))
         self.history = LevelHistoryStore(
             Path(os.getenv("FIELD_EMULATOR_HISTORY_FILE", "/runtime/field_emulator_level_history.csv")),
-            sample_interval_s=_env_float("FIELD_EMULATOR_HISTORY_INTERVAL_S", 30.0),
-            retention_simulated_days=_env_int("FIELD_EMULATOR_HISTORY_SIMULATED_DAYS", 180),
+            sample_interval_s=_env_float("FIELD_EMULATOR_HISTORY_INTERVAL_S"),
+            time_provider=self.clock,
+            retention_simulated_days=_env_int("FIELD_EMULATOR_HISTORY_SIMULATED_DAYS"),
         )
         self._lock = threading.RLock()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
-        self._last_tick = time.time()
+        self._last_tick = self.clock.monotonic_seconds()
         self._consecutive_api_errors = 0
         self._last_plc_connected: bool | None = None
         self.state: dict[str, Any] = self._initial_state()
@@ -144,11 +125,14 @@ class FieldEmulator:
         )
 
     def _initial_state(self) -> dict[str, Any]:
-        inlet = _env_float("FIELD_EMULATOR_INLET_OPEN_PCT", 0.0)
-        outlet = _env_float("FIELD_EMULATOR_OUTLET_OPEN_PCT", 0.0)
+        inlet = _env_float("FIELD_EMULATOR_INLET_OPEN_PCT")
+        outlet = _env_float("FIELD_EMULATOR_OUTLET_OPEN_PCT")
+        season = _env_float("FIELD_EMULATOR_SEASON_POSITION_PCT")
+        if any(value > 100 for value in (inlet, outlet, season)):
+            raise ValueError("Porcentajes iniciales fuera de rango")
         return {
             "control_mode": "manual",
-            "season_position_pct": _env_float("FIELD_EMULATOR_SEASON_POSITION_PCT", 50.0),
+            "season_position_pct": season,
             "manual_inlet_open_pct": inlet,
             "manual_outlet_open_pct": outlet,
             "inlet_open_pct": inlet,
@@ -161,52 +145,50 @@ class FieldEmulator:
             "last_write_at": None,
             "last_write_values": {},
             "last_error": None,
-            "updated_at": time.time(),
+            "updated_at": self.clock.epoch_seconds(),
         }
 
     def _load_state_file(self) -> None:
+        if not self.state_path.exists():
+            return
+        raw = json.loads(self.state_path.read_text(encoding="utf-8"))
+        expected = set(self._persisted_state())
+        if not isinstance(raw, dict) or set(raw) != expected:
+            raise ValueError(f"Contrato de estado invalido: {self.state_path}")
+        if raw["control_mode"] not in {"manual", "automatic"}:
+            raise ValueError("Modo de emulador invalido")
+        for key in expected - {"control_mode"}:
+            value = raw[key]
+            if key in {"yNvCamAsp", "yNvRes"} and value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+                raise ValueError(f"Estado de emulador invalido: {key}")
+            if key.endswith("pct") and not 0 <= value <= 100:
+                raise ValueError(f"Porcentaje fuera de rango: {key}")
+        self.state.update(raw)
+
+    def _persisted_state(self) -> dict[str, Any]:
+        keys = ("control_mode", "season_position_pct", "manual_inlet_open_pct",
+                "manual_outlet_open_pct", "inlet_open_pct", "outlet_open_pct", "yNvCamAsp", "yNvRes")
+        return {key: self.state[key] for key in keys}
+
+    @contextmanager
+    def _state_change(self):
+        previous = deepcopy(self.state)
         try:
-            if self.state_path.exists():
-                raw = json.loads(self.state_path.read_text(encoding="utf-8"))
-                for key in [
-                    "control_mode",
-                    "season_position_pct",
-                    "manual_inlet_open_pct",
-                    "manual_outlet_open_pct",
-                    "inlet_open_pct",
-                    "outlet_open_pct",
-                    "yNvCamAsp",
-                    "yNvRes",
-                ]:
-                    if key in raw:
-                        self.state[key] = raw[key]
-                # Migración transparente del estado anterior, que sólo tenía
-                # las aperturas efectivas.
-                if "manual_inlet_open_pct" not in raw:
-                    self.state["manual_inlet_open_pct"] = self.state["inlet_open_pct"]
-                if "manual_outlet_open_pct" not in raw:
-                    self.state["manual_outlet_open_pct"] = self.state["outlet_open_pct"]
-        except Exception as exc:  # noqa: BLE001
-            self.state["last_error"] = f"No se pudo leer estado persistido: {exc}"
+            yield
+        except Exception:
+            self.state = previous
+            raise
 
     def _save_state_file(self) -> None:
-        try:
-            self.state_path.parent.mkdir(parents=True, exist_ok=True)
-            data = {
-                "control_mode": self.state["control_mode"],
-                "season_position_pct": self.state["season_position_pct"],
-                "manual_inlet_open_pct": self.state["manual_inlet_open_pct"],
-                "manual_outlet_open_pct": self.state["manual_outlet_open_pct"],
-                "inlet_open_pct": self.state["inlet_open_pct"],
-                "outlet_open_pct": self.state["outlet_open_pct"],
-                "yNvCamAsp": self.state["yNvCamAsp"],
-                "yNvRes": self.state["yNvRes"],
-            }
-            tmp = self.state_path.with_suffix(".json.tmp")
-            tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
-            tmp.replace(self.state_path)
-        except Exception as exc:  # noqa: BLE001
-            self.state["last_error"] = f"No se pudo persistir estado: {exc}"
+        self.state_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = self.state_path.with_suffix(".json.tmp")
+        with tmp.open("w", encoding="utf-8") as handle:
+            json.dump(self._persisted_state(), handle, indent=2, allow_nan=False)
+            handle.flush()
+            os.fsync(handle.fileno())
+        tmp.replace(self.state_path)
 
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
@@ -223,7 +205,7 @@ class FieldEmulator:
 
     def snapshot(self) -> dict[str, Any]:
         with self._lock:
-            self._apply_control(time.time())
+            self._apply_control(self.clock.epoch_seconds())
             return {
                 **self.state,
                 "api_url": self.api_url,
@@ -238,13 +220,13 @@ class FieldEmulator:
 
     def set_valves(self, body: ValveBody) -> dict[str, Any]:
         LOGGER.info("valve request inlet=%s outlet=%s", body.inlet_open_pct, body.outlet_open_pct)
-        with self._lock:
+        with self._lock, self._state_change():
             if body.inlet_open_pct is not None:
                 self.state["manual_inlet_open_pct"] = _clamp(float(body.inlet_open_pct), 0, 100)
             if body.outlet_open_pct is not None:
                 self.state["manual_outlet_open_pct"] = _clamp(float(body.outlet_open_pct), 0, 100)
-            self._apply_control(time.time())
-            self.state["updated_at"] = time.time()
+            self._apply_control(self.clock.epoch_seconds())
+            self.state["updated_at"] = self.clock.epoch_seconds()
             self._save_state_file()
             return self.snapshot()
 
@@ -256,7 +238,7 @@ class FieldEmulator:
             body.inlet_open_pct,
             body.outlet_open_pct,
         )
-        with self._lock:
+        with self._lock, self._state_change():
             if body.mode is not None:
                 self.state["control_mode"] = body.mode
             if body.season_position_pct is not None:
@@ -265,14 +247,14 @@ class FieldEmulator:
                 self.state["manual_inlet_open_pct"] = float(body.inlet_open_pct)
             if body.outlet_open_pct is not None:
                 self.state["manual_outlet_open_pct"] = float(body.outlet_open_pct)
-            self._apply_control(time.time())
-            self.state["updated_at"] = time.time()
+            self._apply_control(self.clock.epoch_seconds())
+            self.state["updated_at"] = self.clock.epoch_seconds()
             self._save_state_file()
             return self.snapshot()
 
     def _apply_control(self, now: float) -> None:
         clock = simulated_clock(now)
-        mode = self.state.get("control_mode", "manual")
+        mode = self.state["control_mode"]
         if mode == "automatic":
             inlet = seasonal_inlet_pct(float(self.state["season_position_pct"]))
             outlet = daily_consumption_pct(clock.hour, clock.day_index)
@@ -303,8 +285,8 @@ class FieldEmulator:
                 LOGGER.exception("field emulator tick error: %s", exc)
                 with self._lock:
                     self.state["last_error"] = f"{type(exc).__name__}: {exc}"
-                    self.state["updated_at"] = time.time()
-            time.sleep(max(self.interval_ms / 1000.0, 0.1))
+                    self.state["updated_at"] = self.clock.epoch_seconds()
+            self.clock.sleep(max(self.interval_ms / 1000.0, 0.1))
 
     def _record_api_error(self, error: str) -> None:
         self._consecutive_api_errors += 1
@@ -317,11 +299,11 @@ class FieldEmulator:
             )
         with self._lock:
             self.state["last_error"] = f"API no disponible: {error}"
-            self.state["updated_at"] = time.time()
+            self.state["updated_at"] = self.clock.epoch_seconds()
 
     def _get_json(self, path: str) -> dict[str, Any]:
         req = urllib.request.Request(f"{self.api_url}{path}", method="GET")
-        with urllib.request.urlopen(req, timeout=5) as response:  # noqa: S310 - trusted service URL from deployment env
+        with urllib.request.urlopen(req, timeout=5) as response:  # noqa: S310 - URL de servicio declarada en despliegue
             return json.loads(response.read().decode("utf-8"))
 
     def _post_json(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -339,14 +321,32 @@ class FieldEmulator:
             return json.loads(response.read().decode("utf-8"))
 
     def _tick(self) -> None:
-        now = time.time()
-        dt = _clamp(now - self._last_tick, 0.1, 5.0)
-        self._last_tick = now
+        now = self.clock.epoch_seconds()
+        tick = self.clock.monotonic_seconds()
+        dt = _clamp(tick - self._last_tick, 0.0, 5.0)
+        self._last_tick = tick
         snap = self._get_json("/api/snapshot")
-        values = snap.get("values", {})
-        injection_enabled = bool(snap.get("injection_mode", {}).get("enabled"))
-        plc_connected = bool(snap.get("connection", {}).get("connected"))
-        pump_count = sum(1 for idx in range(1, 6) if _bit(values.get(f"bB{idx}EMar")))
+        values = snap["values"]
+        injection_enabled = snap["injection_mode"]["enabled"]
+        plc_connected = snap["connection"]["connected"]
+        if not isinstance(injection_enabled, bool) or not isinstance(plc_connected, bool):
+            raise ValueError("Snapshot con modos invalidos")
+        if not plc_connected:
+            raise ValueError("PLC desconectado; emulacion pausada")
+        required_tags = ["gCamFn", "gCamRb", "gResFn", "gResSp", "eNvCamAsp", "eNvRes"]
+        required_tags += [f"bB{idx}EMar" for idx in range(1, 6)]
+        confirmed = {}
+        for tag in required_tags:
+            signal = values.get(tag)
+            if not isinstance(signal, dict) or signal.get("quality") != "good":
+                raise ValueError(f"Senal no confirmada o vencida: {tag}")
+            value = signal.get("value")
+            if not isinstance(value, (int, float)) or not math.isfinite(value):
+                raise ValueError(f"Senal invalida: {tag}")
+            if tag.startswith("b") and value not in (0, 1):
+                raise ValueError(f"Senal digital invalida: {tag}")
+            confirmed[tag] = value
+        pump_count = sum(bool(confirmed[f"bB{idx}EMar"]) for idx in range(1, 6))
 
         if plc_connected != self._last_plc_connected:
             if plc_connected:
@@ -355,7 +355,7 @@ class FieldEmulator:
                 LOGGER.warning("PLC disconnected; field writes paused")
             self._last_plc_connected = plc_connected
 
-        with self._lock:
+        with self._lock, self._state_change():
             self._apply_control(now)
             cam_previous = self.state.get("yNvCamAsp")
             res_previous = self.state.get("yNvRes")
@@ -363,15 +363,20 @@ class FieldEmulator:
             outlet_open = float(self.state["outlet_open_pct"])
             self.state["injection_enabled"] = injection_enabled
 
-        cam_floor = _num(values.get("gCamFn"), 0)
-        cam_ceiling = _num(values.get("gCamRb"), 4000)
-        res_floor = _num(values.get("gResFn"), -1)
-        res_ceiling = _num(values.get("gResSp"), 6000)
+        cam_floor = confirmed["gCamFn"]
+        cam_ceiling = confirmed["gCamRb"]
+        res_floor = confirmed["gResFn"]
+        res_ceiling = confirmed["gResSp"]
+
+        if cam_floor >= cam_ceiling or res_floor >= res_ceiling:
+            raise ValueError("Limites de nivel inconsistentes; emulacion pausada")
 
         if not injection_enabled:
-            with self._lock:
+            with self._lock, self._state_change():
                 self.state.update(
                     {
+                        "yNvCamAsp": None,
+                        "yNvRes": None,
                         "pump_count": pump_count,
                         "bounds": {
                             "yNvCamAsp": {"floor": cam_floor, "ceiling": cam_ceiling},
@@ -379,34 +384,21 @@ class FieldEmulator:
                         },
                         "last_snapshot_at": snap.get("timestamp"),
                         "last_error": None if plc_connected else "PLC desconectado; emulacion pausada",
-                        "updated_at": time.time(),
+                        "updated_at": self.clock.epoch_seconds(),
                     }
                 )
                 self._save_state_file()
             if plc_connected:
-                chamber_read = _num(values.get("eNvCamAsp"), _num(cam_previous, cam_floor))
-                reserve_read = _num(values.get("eNvRes"), _num(res_previous, res_floor))
+                chamber_read = confirmed["eNvCamAsp"]
+                reserve_read = confirmed["eNvRes"]
                 self.history.record(now, chamber_read, reserve_read)
             return
 
-        if not plc_connected:
-            with self._lock:
-                self.state.update(
-                    {
-                        "pump_count": pump_count,
-                        "last_snapshot_at": snap.get("timestamp"),
-                        "last_error": "PLC desconectado; emulacion pausada",
-                        "updated_at": time.time(),
-                    }
-                )
-                self._save_state_file()
-            return
-
-        # Las y* son solo área de escritura hacia el controlador. Para iniciar o
+        # Las y* son solo area de escritura hacia el controlador. Para iniciar o
         # re-sincronizar el modelo se toma feedback genuino e*/b*, nunca la
-        # memoria y* reservada para inyección.
-        cam = _num(cam_previous, _num(values.get("eNvCamAsp"), cam_floor))
-        res = _num(res_previous, _num(values.get("eNvRes"), res_floor))
+        # memoria y* reservada para inyeccion.
+        cam = confirmed["eNvCamAsp"] if cam_previous is None else float(cam_previous)
+        res = confirmed["eNvRes"] if res_previous is None else float(res_previous)
 
         pumped_flow = pump_count * self.pump_rate
         consumption_flow = (outlet_open / 100.0) * self.consumption_rate
@@ -430,7 +422,10 @@ class FieldEmulator:
             {"values": write_values, "source": "field-emulator"},
         )
 
-        with self._lock:
+        if write_response.get("errors") or write_response.get("ok") is False:
+            raise ValueError("El controlador rechazo la inyeccion")
+
+        with self._lock, self._state_change():
             self.state.update(
                 {
                     "yNvCamAsp": write_values["yNvCamAsp"],
@@ -444,32 +439,36 @@ class FieldEmulator:
                         "yNvRes": {"floor": res_floor, "ceiling": res_ceiling},
                     },
                     "last_snapshot_at": snap.get("timestamp"),
-                    "last_write_at": time.time(),
+                    "last_write_at": self.clock.epoch_seconds(),
                     "last_error": None,
-                    "updated_at": time.time(),
+                    "updated_at": self.clock.epoch_seconds(),
                 }
             )
             self._save_state_file()
         self.history.record(
             now,
-            _num(values.get("eNvCamAsp"), float(write_values["yNvCamAsp"])),
-            _num(values.get("eNvRes"), float(write_values["yNvRes"])),
+            confirmed["eNvCamAsp"],
+            confirmed["eNvRes"],
         )
 
 
-emulator = FieldEmulator()
+emulator: FieldEmulator | None = None
 app = FastAPI(title="Field Emulator", version="0.1.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 
 @app.on_event("startup")
 def startup() -> None:
+    global emulator
+    configure_logging()
+    emulator = FieldEmulator()
     emulator.start()
 
 
 @app.on_event("shutdown")
 def shutdown() -> None:
-    emulator.stop()
+    if emulator is not None:
+        emulator.stop()
 
 
 @app.get("/health")
@@ -499,3 +498,9 @@ def control(body: ControlBody) -> dict[str, Any]:
 @app.get("/history")
 def history(max_points: int = Query(default=2400, ge=2, le=25_000)) -> dict[str, Any]:
     return emulator.history.snapshot(max_points=max_points)
+
+@app.get("/api/v1/logs")
+def logs() -> dict[str, Any]:
+    from collections import deque
+    with _LOG_PATH.open(encoding="utf-8") as handle:
+        return {"name": "field-emulator", "lines": [line.rstrip("\n") for line in deque(handle, maxlen=300)]}

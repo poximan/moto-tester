@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import csv
 import threading
-import time
+from moto_time import clock
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -37,7 +37,9 @@ class LevelHistoryStore:
         path: Path,
         sample_interval_s: float = 30.0,
         retention_simulated_days: int = 180,
+        time_provider=clock,
     ) -> None:
+        self.clock = time_provider
         self.path = path
         self.sample_interval_s = max(1.0, sample_interval_s)
         self.retention_simulated_days = max(1, retention_simulated_days)
@@ -45,7 +47,8 @@ class LevelHistoryStore:
         self._lock = threading.RLock()
         self._points: list[LevelHistoryPoint] = []
         self._revision = 0
-        self._last_compaction_at = 0.0
+        self._last_compaction_at = self.clock.monotonic_seconds()
+        self._last_sample_tick = None
         self._load()
 
     def _load(self) -> None:
@@ -65,35 +68,33 @@ class LevelHistoryStore:
                     for row in reader
                 ]
             if self._points:
-                if self._trim(time.time()):
+                if self._trim(self.clock.epoch_seconds()):
                     self._rewrite()
                 self._revision = len(self._points)
-        except (OSError, KeyError, TypeError, ValueError, csv.Error):
-            self._points = []
-            try:
-                self._rewrite()
-            except OSError:
-                pass
+        except (OSError, KeyError, TypeError, ValueError, csv.Error) as exc:
+            raise RuntimeError(f"Historico invalido: {self.path}") from exc
 
     def record(self, timestamp: float, chamber_level: float, reserve_level: float) -> bool:
         with self._lock:
-            if self._points and timestamp - self._points[-1].timestamp_real < self.sample_interval_s:
+            tick = self.clock.monotonic_seconds()
+            if self._last_sample_tick is not None and tick - self._last_sample_tick < self.sample_interval_s:
                 return False
-            clock = simulated_clock(timestamp)
+            simulation = simulated_clock(timestamp)
             point = LevelHistoryPoint(
                 timestamp_real=timestamp,
-                simulated_day_index=clock.day_index,
-                simulated_hour=clock.hour,
+                simulated_day_index=simulation.day_index,
+                simulated_hour=simulation.hour,
                 chamber_level=chamber_level,
                 reserve_level=reserve_level,
             )
             self._append(point)
             self._points.append(point)
+            self._last_sample_tick = tick
             self._revision += 1
             removed = self._trim(timestamp)
-            if removed and timestamp - self._last_compaction_at >= SIMULATED_DAY_REAL_SECONDS:
+            if removed and tick - self._last_compaction_at >= SIMULATED_DAY_REAL_SECONDS:
                 self._rewrite()
-                self._last_compaction_at = timestamp
+                self._last_compaction_at = tick
             return True
 
     def _append(self, point: LevelHistoryPoint) -> None:

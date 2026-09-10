@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import time
+from moto_time import clock
 from collections import deque
 from dataclasses import asdict, dataclass
-from threading import Lock
+from threading import Lock, RLock
+from contextlib import contextmanager
 from typing import Any, Literal
 
 from .config import AppConfig, Signal
@@ -43,6 +44,7 @@ class SignalValue:
     value: Any = None
     quality: Quality = "unknown"
     updated_at: float | None = None
+    updated_tick: float | None = None
     error: str | None = None
 
 
@@ -68,6 +70,7 @@ class RuntimeState:
         self.pump_controls = pump_controls
         self._emar_modes = self.pump_controls.emar_modes()
         self._lock = Lock()
+        self._write_gate = RLock()
         self._values: dict[str, SignalValue] = {
             tag: SignalValue(
                 tag=tag,
@@ -89,16 +92,17 @@ class RuntimeState:
                 injection_group=signal.injection_group,
                 value=signal.default,
                 quality="local" if signal.default is not None else "unknown",
-                updated_at=time.time() if signal.default is not None else None,
+                updated_at=clock.epoch_seconds() if signal.default is not None else None,
             )
             for tag, signal in config.signals_by_tag.items()
         }
-        now = time.time()
+        now = clock.epoch_seconds()
         for tag, value in self.pump_controls.initial_values().items():
             item = self._values[tag]
             item.value = value
             item.quality = "local"
             item.updated_at = now
+            item.updated_tick = clock.monotonic_seconds()
         self._connection: dict[str, Any] = {
             "connected": False,
             "last_poll_at": None,
@@ -123,7 +127,7 @@ class RuntimeState:
 
     def add_event(self, event_type: str, message: str, level: str = "info", **extra: Any) -> None:
         event = {
-            "ts": time.time(),
+            "ts": clock.epoch_seconds(),
             "type": event_type,
             "level": level,
             "message": message,
@@ -138,12 +142,12 @@ class RuntimeState:
 
     def mark_poll_start(self) -> None:
         with self._lock:
-            self._connection["last_poll_at"] = time.time()
+            self._connection["last_poll_at"] = clock.epoch_seconds()
             self._connection["poll_count"] += 1
 
     def mark_poll_success(self) -> None:
         with self._lock:
-            self._connection.update({"connected": True, "last_success_at": time.time(), "last_error": None})
+            self._connection.update({"connected": True, "last_success_at": clock.epoch_seconds(), "last_error": None})
 
     def mark_poll_error(self, error: str) -> None:
         with self._lock:
@@ -151,7 +155,7 @@ class RuntimeState:
             self._connection["error_count"] += 1
 
     def update_values(self, updates: dict[str, Any], quality: Quality = "good", error: str | None = None) -> None:
-        now = time.time()
+        now = clock.epoch_seconds()
         with self._lock:
             for tag, value in updates.items():
                 if tag not in self._values:
@@ -160,6 +164,7 @@ class RuntimeState:
                 item.value = value
                 item.quality = quality
                 item.updated_at = now
+                item.updated_tick = clock.monotonic_seconds()
                 item.error = error
             self._sync_emar_outputs_unlocked(updates, now)
 
@@ -205,12 +210,13 @@ class RuntimeState:
         self.update_values({tag: value}, quality=quality, error=error)
 
     def mark_table_error(self, table_name: str, error: str) -> None:
-        now = time.time()
+        now = clock.epoch_seconds()
         with self._lock:
             for item in self._values.values():
                 if item.table == table_name:
                     item.quality = "error"
                     item.updated_at = now
+                    item.updated_tick = clock.monotonic_seconds()
                     item.error = error
 
     def _validate_write(self, tag: str, value: Any) -> bool | int:
@@ -289,7 +295,7 @@ class RuntimeState:
         if pump_id < 1 or pump_id > 5:
             raise KeyError("pump_id debe estar entre 1 y 5")
         tag = f"yB{pump_id}EMar"
-        now = time.time()
+        now = clock.epoch_seconds()
         with self._lock:
             queue_capacity = self._write_queue.maxlen or 0
             if self._write_depth_unlocked() >= queue_capacity:
@@ -307,7 +313,7 @@ class RuntimeState:
         source: str,
         mode: str,
     ) -> dict[str, dict[str, Any]]:
-        now = time.time()
+        now = clock.epoch_seconds()
         self.pump_controls.update_rtu_tags(validated)
         with self._lock:
             results: dict[str, dict[str, Any]] = {}
@@ -317,6 +323,7 @@ class RuntimeState:
                 item.value = value
                 item.quality = "local"
                 item.updated_at = now
+                item.updated_tick = clock.monotonic_seconds()
                 item.error = f"injection_mode={mode}: inyeccion no escrita en PLC"
                 self._events.appendleft(
                     {
@@ -343,7 +350,7 @@ class RuntimeState:
         *,
         replace_pending: bool = False,
     ) -> dict[str, dict[str, Any]]:
-        now = time.time()
+        now = clock.epoch_seconds()
         with self._lock:
             if replace_pending:
                 return self._coalesce_pending_writes_unlocked(validated, source, now)
@@ -405,6 +412,7 @@ class RuntimeState:
         item.value = value
         item.quality = "local"
         item.updated_at = now
+        item.updated_tick = clock.monotonic_seconds()
         item.error = "write queued"
 
     def _write_depth_unlocked(self) -> int:
@@ -425,6 +433,7 @@ class RuntimeState:
         item.value = value
         item.quality = "local"
         item.updated_at = now
+        item.updated_tick = clock.monotonic_seconds()
         item.error = "write queued"
         self._events.appendleft(
             {
@@ -468,7 +477,17 @@ class RuntimeState:
         return self.injection_mode.snapshot()
 
     def set_injection_mode(self, mode: str, source: str = "web") -> dict[str, Any]:
-        snapshot = self.injection_mode.set_mode(mode)
+        with self._write_gate:
+            snapshot = self.injection_mode.set_mode(mode)
+            if not snapshot["enabled"]:
+                with self._lock:
+                    cancelled = [item for item in self._write_queue if self._requires_injection(item)]
+                    for item in cancelled:
+                        self.write_result(item.tag, item.value, False, "Inyeccion deshabilitada; escritura cancelada")
+                    self._write_queue = deque(
+                        (item for item in self._write_queue if not self._requires_injection(item)),
+                        maxlen=self._write_queue.maxlen,
+                    )
         self.add_event(
             "injection_mode",
             f"Modo de inyeccion y* cambiado a {snapshot['mode']}",
@@ -476,6 +495,17 @@ class RuntimeState:
             source=source,
         )
         return snapshot
+
+    def _requires_injection(self, request: WriteRequest) -> bool:
+        signal = self.config.signals_by_tag[request.tag]
+        return signal.facade and PUMP_EMAR_TAG.fullmatch(request.tag) is None
+
+    @contextmanager
+    def authorize_write(self, request: WriteRequest):
+        """Serializa el permiso final con la deshabilitacion de inyecciones."""
+        with self._write_gate:
+            enabled = not self._requires_injection(request) or self.injection_mode.is_enabled()
+            yield enabled
 
     def polling_control_snapshot(self) -> dict[str, Any]:
         return self.polling_control.snapshot()
@@ -506,13 +536,15 @@ class RuntimeState:
         return snapshot
 
     def write_result(self, tag: str, value: Any, ok: bool, error: str | None = None) -> None:
-        now = time.time()
+        now = clock.epoch_seconds()
         with self._lock:
             if tag in self._values:
                 item = self._values[tag]
-                item.value = value
+                if ok:
+                    item.value = value
                 item.quality = "good" if ok else "error"
                 item.updated_at = now
+                item.updated_tick = clock.monotonic_seconds()
                 item.error = error
             self._events.appendleft(
                 {
@@ -527,7 +559,7 @@ class RuntimeState:
             )
 
     def snapshot(self) -> dict[str, Any]:
-        now = time.time()
+        now = clock.epoch_seconds()
         with self._lock:
             values = {tag: asdict(value) for tag, value in self._values.items()}
             connection = dict(self._connection)
@@ -542,14 +574,15 @@ class RuntimeState:
         polling_control = self.polling_control.snapshot()
         max_stale_s = self.config.polling.max_stale_ms / 1000.0
         for item in values.values():
-            updated_at = item.get("updated_at")
-            item["age_s"] = None if updated_at is None else round(now - updated_at, 3)
+            updated_tick = item.pop("updated_tick")
+            age = None if updated_tick is None else max(0.0, clock.monotonic_seconds() - updated_tick)
+            item["age_s"] = None if age is None else round(age, 3)
             function_control = polling_control["functions"].get(item["function_code"], {})
             signal_stale_s = max(
                 max_stale_s,
                 int(function_control.get("sample_rate_ms", 0)) / 1000.0 * 2,
             )
-            if updated_at and now - updated_at > signal_stale_s and item.get("quality") == "good":
+            if age is not None and age > signal_stale_s and item.get("quality") == "good":
                 item["quality"] = "stale"
 
         injection_mode = self.injection_mode.snapshot()

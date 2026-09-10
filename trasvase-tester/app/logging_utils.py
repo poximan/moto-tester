@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+from logging.handlers import RotatingFileHandler
+from moto_time import PresentationFormatter
 import os
 from collections import deque
 from pathlib import Path
@@ -33,10 +35,10 @@ def configure_file_logger(name: str, filename: str, level: int = logging.INFO) -
         if isinstance(handler, logging.FileHandler) and Path(handler.baseFilename) == target:
             return logger
 
-    handler = logging.FileHandler(target, encoding="utf-8")
+    handler = RotatingFileHandler(target, maxBytes=10_000_000, backupCount=3, encoding="utf-8")
     handler.setLevel(level)
     handler.setFormatter(
-        logging.Formatter(
+        PresentationFormatter(
             "%(asctime)s.%(msecs)03d %(levelname)s [%(name)s] %(message)s",
             datefmt="%Y-%m-%d %H:%M:%S",
         )

@@ -1,5 +1,4 @@
 import sys
-import time
 from pathlib import Path
 
 import pytest
@@ -7,11 +6,27 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "field-emulator"))
 
 from field_emulator.main import FieldEmulator
+from moto_time import clock
 from field_emulator.history import LevelHistoryStore
 from field_emulator.simulation import daily_consumption_pct, seasonal_inlet_pct, simulated_clock
 
 
 def configure_runtime_files(monkeypatch, tmp_path):
+    defaults = {
+        "TESTER_API_URL": "http://tester.invalid:8080",
+        "INTERNAL_EMULATOR_TOKEN": "test-only-token",
+        "FIELD_EMULATOR_INTERVAL_MS": "1000",
+        "FIELD_EMULATOR_INLET_OPEN_PCT": "0",
+        "FIELD_EMULATOR_OUTLET_OPEN_PCT": "0",
+        "FIELD_EMULATOR_INLET_RATE_PER_S": "45",
+        "FIELD_EMULATOR_CONSUMPTION_RATE_PER_S": "45.6",
+        "FIELD_EMULATOR_PUMP_RATE_PER_S": "12",
+        "FIELD_EMULATOR_SEASON_POSITION_PCT": "50",
+        "FIELD_EMULATOR_HISTORY_INTERVAL_S": "30",
+        "FIELD_EMULATOR_HISTORY_SIMULATED_DAYS": "180",
+    }
+    for key, value in defaults.items():
+        monkeypatch.setenv(key, value)
     monkeypatch.setenv("FIELD_EMULATOR_STATE_FILE", str(tmp_path / "state.json"))
     monkeypatch.setenv("FIELD_EMULATOR_HISTORY_FILE", str(tmp_path / "history.csv"))
 
@@ -26,7 +41,7 @@ def test_inlet_valve_writes_yNvCamAsp_and_outlet_valve_writes_yNvRes(monkeypatch
     emu.state["manual_outlet_open_pct"] = 100
     emu.state["yNvCamAsp"] = 1000
     emu.state["yNvRes"] = 3000
-    emu._last_tick = time.time() - 1.0
+    emu._last_tick = clock.monotonic_seconds() - 1.0
 
     snap = {
         "timestamp": 1,
@@ -45,6 +60,10 @@ def test_inlet_valve_writes_yNvCamAsp_and_outlet_valve_writes_yNvRes(monkeypatch
         },
     }
     posts = []
+    for signal in snap["values"].values():
+        signal["quality"] = "good"
+    snap["values"].setdefault("eNvCamAsp", {"value": 1000, "quality": "good"})
+    snap["values"].setdefault("eNvRes", {"value": 3000, "quality": "good"})
     emu._get_json = lambda path: snap
     emu._post_json = lambda path, payload: posts.append((path, payload)) or {"ok": True}
 
@@ -72,7 +91,7 @@ def test_field_emulator_initializes_from_genuine_feedback_not_y_memory(monkeypat
     emu = FieldEmulator()
     emu.state["yNvCamAsp"] = None
     emu.state["yNvRes"] = None
-    emu._last_tick = time.time() - 1.0
+    emu._last_tick = clock.monotonic_seconds() - 1.0
 
     snap = {
         "timestamp": 1,
@@ -95,6 +114,10 @@ def test_field_emulator_initializes_from_genuine_feedback_not_y_memory(monkeypat
         },
     }
     posts = []
+    for signal in snap["values"].values():
+        signal["quality"] = "good"
+    snap["values"].setdefault("eNvCamAsp", {"value": 1000, "quality": "good"})
+    snap["values"].setdefault("eNvRes", {"value": 3000, "quality": "good"})
     emu._get_json = lambda path: snap
     emu._post_json = lambda path, payload: posts.append((path, payload)) or {"ok": True}
 
@@ -106,7 +129,7 @@ def test_field_emulator_initializes_from_genuine_feedback_not_y_memory(monkeypat
 def test_four_pumps_slightly_beat_maximum_consumption_by_default(monkeypatch, tmp_path):
     configure_runtime_files(monkeypatch, tmp_path)
     monkeypatch.setenv("FIELD_EMULATOR_PUMP_RATE_PER_S", "12")
-    monkeypatch.delenv("FIELD_EMULATOR_CONSUMPTION_RATE_PER_S", raising=False)
+    monkeypatch.setenv("FIELD_EMULATOR_CONSUMPTION_RATE_PER_S", "45.6")
     monkeypatch.setenv("FIELD_EMULATOR_INLET_RATE_PER_S", "0")
     emu = FieldEmulator()
     assert emu.consumption_rate == pytest.approx(45.6)
@@ -114,7 +137,7 @@ def test_four_pumps_slightly_beat_maximum_consumption_by_default(monkeypatch, tm
     emu.state["manual_outlet_open_pct"] = 100
     emu.state["yNvCamAsp"] = 2000
     emu.state["yNvRes"] = 3000
-    emu._last_tick = time.time() - 1.0
+    emu._last_tick = clock.monotonic_seconds() - 1.0
 
     snap = {
         "timestamp": 1,
@@ -133,6 +156,10 @@ def test_four_pumps_slightly_beat_maximum_consumption_by_default(monkeypatch, tm
         },
     }
     posts = []
+    for signal in snap["values"].values():
+        signal["quality"] = "good"
+    snap["values"].setdefault("eNvCamAsp", {"value": 1000, "quality": "good"})
+    snap["values"].setdefault("eNvRes", {"value": 3000, "quality": "good"})
     emu._get_json = lambda path: snap
     emu._post_json = lambda path, payload: posts.append((path, payload)) or {"ok": True}
 
@@ -146,7 +173,7 @@ def test_field_emulator_pauses_writes_while_plc_is_disconnected(monkeypatch, tmp
     emu = FieldEmulator()
     emu.state["yNvCamAsp"] = 1000
     emu.state["yNvRes"] = 3000
-    emu._last_tick = time.time() - 1.0
+    emu._last_tick = clock.monotonic_seconds() - 1.0
     emu._get_json = lambda path: {
         "timestamp": 1,
         "connection": {"connected": False},
@@ -156,12 +183,12 @@ def test_field_emulator_pauses_writes_while_plc_is_disconnected(monkeypatch, tmp
     posts = []
     emu._post_json = lambda path, payload: posts.append((path, payload)) or {"ok": True}
 
-    emu._tick()
+    with pytest.raises(ValueError, match="PLC desconectado"):
+        emu._tick()
 
     assert posts == []
     assert emu.state["yNvCamAsp"] == 1000
     assert emu.state["yNvRes"] == 3000
-    assert emu.state["last_error"] == "PLC desconectado; emulacion pausada"
 
 
 def test_seasonal_curve_matches_solstices_and_equinoxes():
@@ -207,7 +234,12 @@ def test_daily_consumption_has_no_jumps_between_peaks_and_valleys():
 
 
 def test_history_samples_every_30_seconds_and_keeps_requested_window(tmp_path):
-    store = LevelHistoryStore(tmp_path / "levels.csv", sample_interval_s=30, retention_simulated_days=2)
+    class FakeClock:
+        ticks = iter([0, 0, 29, 30, 7201])
+        def monotonic_seconds(self):
+            return next(self.ticks)
+    store = LevelHistoryStore(tmp_path / "levels.csv", sample_interval_s=30,
+                              retention_simulated_days=2, time_provider=FakeClock())
     assert store.record(10_000, 100, 200)
     assert not store.record(10_029, 101, 201)
     assert store.record(10_030, 102, 202)

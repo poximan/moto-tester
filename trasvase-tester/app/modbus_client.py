@@ -4,7 +4,7 @@ import logging
 import math
 import random
 import threading
-import time
+from moto_time import clock
 from typing import Any
 
 from pymodbus.client import ModbusTcpClient
@@ -37,17 +37,8 @@ def _encode_register(value: int, data_type: str | None) -> int:
 
 
 def _call_modbus(method: Any, *args: Any, slave: int, **kwargs: Any) -> Any:
-    """Pymodbus changed the unit-id keyword across versions.
-
-    Try the current keyword first, then fall back to older variants.
-    """
-    try:
-        return method(*args, slave=slave, **kwargs)
-    except TypeError:
-        try:
-            return method(*args, unit=slave, **kwargs)
-        except TypeError:
-            return method(*args, device_id=slave, **kwargs)
+    """Usa el contrato de pymodbus 3.8.3 fijado en requirements.txt."""
+    return method(*args, slave=slave, **kwargs)
 
 
 class ModbusPoller:
@@ -102,7 +93,7 @@ class ModbusPoller:
                 self._stop.wait(self.config.controller.reconnect_backoff_s)
                 continue
 
-            now = time.monotonic()
+            now = clock.monotonic_seconds()
             due_tables: list[TableDefinition] = []
             for table in self.config.tables.values():
                 function_code = function_code_for(table.kind)
@@ -132,7 +123,7 @@ class ModbusPoller:
         ]
         if not enabled:
             return
-        now = time.monotonic()
+        now = clock.monotonic_seconds()
         shortest_interval_s = min(
             int(polling["functions"][code]["sample_rate_ms"]) / 1000.0
             for code in enabled
@@ -321,8 +312,18 @@ class ModbusPoller:
             request = self.state.next_write()
             if request is None:
                 return
-            self._write_request(request)
-            self.state.complete_write(request)
+            try:
+                with self.state.authorize_write(request) as authorized:
+                    if authorized:
+                        self._write_request(request)
+                    else:
+                        self.state.write_result(request.tag, request.value, ok=False,
+                                                error="Inyeccion cancelada: modo deshabilitado")
+            except Exception as error:
+                LOGGER.exception("Fallo de transporte al escribir %s", request.tag)
+                self.state.write_result(request.tag, request.value, ok=False, error=str(error))
+            finally:
+                self.state.complete_write(request)
 
     def _write_request(self, request: WriteRequest) -> None:
         signal = self.config.signals_by_tag[request.tag]
@@ -388,7 +389,7 @@ class SimulationPoller:
         self.state = state
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
-        self._t0 = time.monotonic()
+        self._t0 = clock.monotonic_seconds()
 
     def start(self) -> None:
         LOGGER.warning("simulation poller start; no hay tráfico Modbus")
@@ -405,7 +406,7 @@ class SimulationPoller:
         interval_s = max(self.config.polling.interval_ms / 1000.0, 0.1)
         while not self._stop.is_set():
             self.state.mark_poll_start()
-            t = time.monotonic() - self._t0
+            t = clock.monotonic_seconds() - self._t0
             reserve_level = int(3300 + 1200 * math.sin(t / 31.0))
             reserve_floor = int(self.config.signals_by_tag["gResFn"].default)
             reserve_superior = int(self.config.signals_by_tag["gResSp"].default)
@@ -438,8 +439,10 @@ class SimulationPoller:
             # En simulacion no hay cliente Modbus que confirme la escritura.
             # La cola ya contiene solamente operaciones autorizadas por el dominio.
             for request in self.state.drain_writes():
-                self.state.write_result(request.tag, request.value, ok=True)
+                with self.state.authorize_write(request) as authorized:
+                    self.state.write_result(request.tag, request.value, ok=authorized,
+                                            error=None if authorized else "Inyeccion cancelada")
 
             self.state.update_connection(connected=True, last_error=None)
             self.state.mark_poll_success()
-            time.sleep(interval_s)
+            clock.sleep(interval_s)

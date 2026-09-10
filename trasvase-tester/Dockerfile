@@ -1,3 +1,9 @@
+FROM python:3.12.11-slim-bookworm AS python-deps
+WORKDIR /deps
+COPY requirements.txt /deps/requirements.txt
+RUN python -m venv /opt/venv \
+    && /opt/venv/bin/pip install --no-cache-dir -r /deps/requirements.txt
+
 FROM node:24.18.0-alpine AS frontend-builder
 
 WORKDIR /workspace/products/moto-tester/trasvase-tester/frontend
@@ -12,7 +18,7 @@ COPY trasvase-tester/frontend/src ./src
 RUN npm ci --ignore-scripts --no-audit --no-fund
 RUN npm run build
 
-FROM python:3.12-slim-bookworm
+FROM python:3.12.11-slim-bookworm
 
 ARG APP_UID=1000
 ARG APP_GID=1000
@@ -23,13 +29,14 @@ RUN groupadd --gid "${APP_GID}" appgroup \
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PYTHONPATH=/app/trasvase-tester \
+    PYTHONPATH=/app/trasvase-tester:/shared \
     WEB_HOST=0.0.0.0 \
     WEB_PORT=8080
 
 WORKDIR /app
-COPY --chown=${APP_UID}:${APP_GID} requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+COPY --chown=${APP_UID}:${APP_GID} moto_time /shared/moto_time
+COPY --from=python-deps /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 COPY --chown=${APP_UID}:${APP_GID} trasvase-tester/app ./trasvase-tester/app
 COPY --from=frontend-builder --chown=${APP_UID}:${APP_GID} \
     /workspace/products/moto-tester/trasvase-tester/frontend/dist \
@@ -39,9 +46,7 @@ COPY --chown=${APP_UID}:${APP_GID} docs ./docs
 
 EXPOSE 8080
 
-HEALTHCHECK --interval=5s --timeout=3s --start-period=10s --retries=20 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/health', timeout=2).read()"
 
 USER 1000:1000
 
-CMD ["sh", "-c", "uvicorn app.main:app --host ${WEB_HOST} --port ${WEB_PORT}"]
+CMD ["sh", "-c", "exec uvicorn app.main:app --host ${WEB_HOST} --port ${WEB_PORT}"]

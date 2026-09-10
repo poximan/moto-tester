@@ -756,12 +756,11 @@ def test_sca_window_title_shows_modbus_details():
     assert "prod 0..{lastRow}" in source
 
 
-def test_compose_waits_for_web_health_before_field_emulator():
+def test_compose_starts_web_before_field_emulator_without_periodic_probe():
     compose = Path("docker-compose.yml").read_text(encoding="utf-8")
     compose_data = yaml.safe_load(compose)
     dockerfile = (SERVICE_DIR / "Dockerfile").read_text(encoding="utf-8")
-    assert "HEALTHCHECK" in dockerfile
-    assert "/api/health" in dockerfile
-    assert "condition: service_healthy" in compose
+    assert "HEALTHCHECK" not in dockerfile
+    assert "condition: service_started" in compose
     # El web no debe depender del emulador: el emulador consume la API web.
     assert "depends_on" not in compose_data["services"]["trasvase-tester"]
