@@ -503,4 +503,9 @@ def history(max_points: int = Query(default=2400, ge=2, le=25_000)) -> dict[str,
 def logs() -> dict[str, Any]:
     from collections import deque
     with _LOG_PATH.open(encoding="utf-8") as handle:
-        return {"name": "field-emulator", "lines": [line.rstrip("\n") for line in deque(handle, maxlen=300)]}
+        return {
+            "name": "field-emulator",
+            "filename": _LOG_PATH.name,
+            "exists": True,
+            "lines": [line.rstrip("\n") for line in deque(handle, maxlen=300)],
+        }

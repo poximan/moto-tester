@@ -178,11 +178,15 @@ export interface StreamPayload {
   emulator: EmulatorState;
 }
 
-export interface LogFile {
+interface LogFileIdentity {
   name: string;
   filename: string;
-  size_bytes: number;
 }
+
+export type LogFile = LogFileIdentity & (
+  | { source: "local"; size_bytes: number }
+  | { source: "http" }
+);
 
 export interface LogIndex {
   log_dir: string;

@@ -79,13 +79,6 @@ export class TrasvaseApiClient {
     return this.sendJson("api/write", "POST", { tag, value, source });
   }
 
-  public async setValves(inlet: number, outlet: number): Promise<EmulatorState> {
-    return this.parser.parseEmulator(await this.sendJson("api/emulator/valves", "PUT", {
-      inlet_open_pct: inlet,
-      outlet_open_pct: outlet,
-    }));
-  }
-
   public async setEmulatorControl(values: {
     mode?: EmulatorControlMode;
     season_position_pct?: number;

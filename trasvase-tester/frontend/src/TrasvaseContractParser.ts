@@ -123,11 +123,19 @@ export class TrasvaseContractParser {
       log_dir: logDir,
       files: record.files.map((value, index) => {
         const file = this.requireRecord(value, `logs.files[${index}]`);
-        return {
+        const identity = {
           name: this.requireString(file, "name", `logs.files[${index}]`),
           filename: this.requireString(file, "filename", `logs.files[${index}]`),
-          size_bytes: this.requireNumber(file, "size_bytes", `logs.files[${index}]`),
         };
+        if (file.source === "http") return { ...identity, source: "http" as const };
+        if (file.source !== "local") {
+          throw new Error(`Contrato inválido: logs.files[${index}].source debe ser local o http`);
+        }
+        const size = this.requireNumber(file, "size_bytes", `logs.files[${index}]`);
+        if (!Number.isSafeInteger(size) || size < 0) {
+          throw new Error(`Contrato inválido: logs.files[${index}].size_bytes debe ser un entero no negativo`);
+        }
+        return { ...identity, source: "local" as const, size_bytes: size };
       }),
     };
   }

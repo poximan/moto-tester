@@ -13,7 +13,7 @@ import { useTrasvaseData } from "./useTrasvaseData";
 
 export function App() {
   const presenter = useMemo(() => new TrasvasePresenter(), []);
-  const { client, config, emulator, error, execute, levelHistory, loading, logs, snapshot, streamState } = useTrasvaseData();
+  const { client, config, emulator, error, execute, levelHistory, loading, snapshot, streamState } = useTrasvaseData();
 
   return (
     <AppShell productName="Trasvase Tester" sectionName="Moto Tester">
@@ -41,7 +41,7 @@ export function App() {
               snapshot={snapshot}
             />
             <InjectionPanel client={client} config={config} execute={execute} presenter={presenter} snapshot={snapshot} />
-            {logs && <LogsPanel client={client} logs={logs} />}
+            <LogsPanel client={client} />
           </>
         )}
       </main>

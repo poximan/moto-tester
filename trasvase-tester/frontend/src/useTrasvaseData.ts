@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { TrasvaseApiClient } from "./TrasvaseApiClient";
-import type { EmulatorState, LevelHistory, LogIndex, RuntimeSnapshot, TesterConfig } from "./TrasvaseModels";
+import type { EmulatorState, LevelHistory, RuntimeSnapshot, TesterConfig } from "./TrasvaseModels";
 import { TrasvaseStreamClient, type StreamState } from "./TrasvaseStreamClient";
 
 export interface TrasvaseDataState {
@@ -11,7 +11,6 @@ export interface TrasvaseDataState {
   error: string | null;
   execute: (operation: () => Promise<unknown>) => Promise<boolean>;
   loading: boolean;
-  logs: LogIndex | null;
   levelHistory: LevelHistory | null;
   refreshSnapshot: () => Promise<void>;
   snapshot: RuntimeSnapshot | null;
@@ -24,7 +23,6 @@ export function useTrasvaseData(): TrasvaseDataState {
   const [config, setConfig] = useState<TesterConfig | null>(null);
   const [snapshot, setSnapshot] = useState<RuntimeSnapshot | null>(null);
   const [emulator, setEmulator] = useState<EmulatorState | null>(null);
-  const [logs, setLogs] = useState<LogIndex | null>(null);
   const [levelHistory, setLevelHistory] = useState<LevelHistory | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -54,14 +52,12 @@ export function useTrasvaseData(): TrasvaseDataState {
       client.getSnapshot(controller.signal),
       client.getEmulator(controller.signal),
       client.getEmulatorHistory(controller.signal),
-      client.getLogs(controller.signal),
-    ]).then(([nextConfig, nextSnapshot, nextEmulator, nextHistory, nextLogs]) => {
+    ]).then(([nextConfig, nextSnapshot, nextEmulator, nextHistory]) => {
       if (!active) return;
       setConfig(nextConfig);
       setSnapshot(nextSnapshot);
       setEmulator(nextEmulator);
       setLevelHistory(nextHistory);
-      setLogs(nextLogs);
       setError(null);
       setLoading(false);
       stream.start((payload) => {
@@ -92,5 +88,5 @@ export function useTrasvaseData(): TrasvaseDataState {
     return () => controller.abort();
   }, [client, historyRevision, levelHistory?.revision]);
 
-  return { client, config, emulator, error, execute, levelHistory, loading, logs, refreshSnapshot, snapshot, streamState };
+  return { client, config, emulator, error, execute, levelHistory, loading, refreshSnapshot, snapshot, streamState };
 }

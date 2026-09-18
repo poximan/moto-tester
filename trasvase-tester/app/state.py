@@ -7,7 +7,7 @@ from threading import Lock, RLock
 from contextlib import contextmanager
 from typing import Any, Literal
 
-from .config import AppConfig, Signal
+from .config import AppConfig
 from .injection_mode import InjectionModeStore
 from .polling_control import PollingControlStore
 from .pump_control import (
@@ -19,7 +19,6 @@ from .pump_control import (
 )
 
 Quality = Literal["unknown", "good", "stale", "error", "local"]
-WriteKind = Literal["coil", "holding_register"]
 
 
 @dataclass
@@ -205,9 +204,6 @@ class RuntimeState:
         if mode == EMAR_AUTOMATIC:
             return self._values[f"bB{pump_id}Arndo"].value == 1
         return True
-
-    def update_value(self, tag: str, value: Any, quality: Quality = "good", error: str | None = None) -> None:
-        self.update_values({tag: value}, quality=quality, error=error)
 
     def mark_table_error(self, table_name: str, error: str) -> None:
         now = clock.epoch_seconds()

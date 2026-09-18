@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Literal
 
 TableKind = Literal["coil", "discrete_input", "input_register", "holding_register"]
@@ -19,14 +18,6 @@ _FUNCTION_BY_KIND: dict[str, str] = {
     "holding_register": "03",
     "input_register": "04",
 }
-
-
-@dataclass(frozen=True)
-class AddressInfo:
-    kind: TableKind
-    reference: int
-    pdu_address: int
-    function_code: str
 
 
 def reference_to_pdu(reference: int, kind: TableKind, mode: AddressingMode = "modicon_reference") -> int:
@@ -110,12 +101,3 @@ def ace_reference(kind: TableKind, table_number: int, row: int, column: int = 0)
 def ace_pdu_address(kind: TableKind, table_number: int, row: int, column: int = 0) -> int:
     """Dirección PDU cero-based equivalente a la referencia ACE3600."""
     return reference_to_pdu(ace_reference(kind, table_number, row, column), kind)
-
-
-def make_address_info(reference: int, kind: TableKind, mode: AddressingMode) -> AddressInfo:
-    return AddressInfo(
-        kind=kind,
-        reference=reference,
-        pdu_address=reference_to_pdu(reference, kind, mode),
-        function_code=function_code_for(kind),
-    )

@@ -30,6 +30,8 @@ class DiagnosticsService:
         base = log_dir()
         files = []
         for path in sorted(base.glob("*.log")):
+            if path.stem == "field-emulator":
+                continue
             try:
                 stat = path.stat()
             except OSError:
@@ -38,6 +40,7 @@ class DiagnosticsService:
                 {
                     "name": path.stem,
                     "filename": path.name,
+                    "source": "local",
                     "path": str(path),
                     "size_bytes": stat.st_size,
                     "modified_at": stat.st_mtime,
