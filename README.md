@@ -17,6 +17,12 @@ decide ni arranca bombas: lee estados confirmados y propone únicamente
 
 ## Configuración y estado
 
+La entrada web muestra `trasvase-tester/frontend/public/assets/trasvase.png`
+en el splash compartido de `platform/frontend-foundation`: mínimo 2 segundos,
+salida al terminar las consultas iniciales de configuración/estado/emulador e
+histórico, y máximo 5 segundos aunque alguna siga pendiente. Los refrescos y
+los eventos del stream no lo reinician. El PNG se publica sin modificaciones.
+
 - `.env` contiene PLC, autenticación interna, polling, timeouts y parámetros del
   emulador; `.env.example` es la plantilla.
 - `config/default.yaml` contiene exclusivamente el mapa Modbus y la estructura

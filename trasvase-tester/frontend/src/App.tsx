@@ -1,4 +1,4 @@
-import { AppShell } from "@servicoop/frontend-foundation";
+import { AppShell, StartupSplash } from "@servicoop/frontend-foundation";
 import { useMemo } from "react";
 
 import styles from "./App.module.css";
@@ -16,35 +16,38 @@ export function App() {
   const { client, config, emulator, error, execute, levelHistory, loading, snapshot, streamState } = useTrasvaseData();
 
   return (
-    <AppShell productName="Trasvase Tester" sectionName="Moto Tester">
-      <main className={styles.main}>
-        {error && <div className={styles.error} role="alert"><strong>Operación o contrato rechazado.</strong><span>{error}</span></div>}
-        {loading && <p className={styles.loading}>Cargando configuración y estado operativo…</p>}
-        {config && snapshot && (
-          <>
-            <StatusHeader
-              config={config}
-              onPolling={async (code, values) => { await execute(() => client.setPolling(code, values)); }}
-              onInjectionMode={async () => {
-                const next = snapshot.injection_mode.enabled ? "disabled" : "enabled";
-                await execute(() => client.setInjectionMode(next));
-              }}
-              snapshot={snapshot}
-              streamState={streamState}
-            />
-            {emulator && <ProcessPanel emulator={emulator} history={levelHistory} onControl={async (values) => execute(() => client.setEmulatorControl(values))} presenter={presenter} snapshot={snapshot} />}
-            <PumpGrid client={client} execute={execute} presenter={presenter} snapshot={snapshot} />
-            <ProductionTables
-              config={config}
-              onSetpoint={async (tag, value) => { await execute(() => client.write(tag, value)); }}
-              presenter={presenter}
-              snapshot={snapshot}
-            />
-            <InjectionPanel client={client} config={config} execute={execute} presenter={presenter} snapshot={snapshot} />
-            <LogsPanel client={client} />
-          </>
-        )}
-      </main>
-    </AppShell>
+    <StartupSplash productName="moto-tester" logoSrc={`${import.meta.env.BASE_URL}assets/trasvase.png`}
+      ready={!loading || error !== null}>
+      <AppShell productName="Trasvase Tester" sectionName="Moto Tester">
+        <main className={styles.main}>
+          {error && <div className={styles.error} role="alert"><strong>Operación o contrato rechazado.</strong><span>{error}</span></div>}
+          {loading && <p className={styles.loading}>Cargando configuración y estado operativo…</p>}
+          {config && snapshot && (
+            <>
+              <StatusHeader
+                config={config}
+                onPolling={async (code, values) => { await execute(() => client.setPolling(code, values)); }}
+                onInjectionMode={async () => {
+                  const next = snapshot.injection_mode.enabled ? "disabled" : "enabled";
+                  await execute(() => client.setInjectionMode(next));
+                }}
+                snapshot={snapshot}
+                streamState={streamState}
+              />
+              {emulator && <ProcessPanel emulator={emulator} history={levelHistory} onControl={async (values) => execute(() => client.setEmulatorControl(values))} presenter={presenter} snapshot={snapshot} />}
+              <PumpGrid client={client} execute={execute} presenter={presenter} snapshot={snapshot} />
+              <ProductionTables
+                config={config}
+                onSetpoint={async (tag, value) => { await execute(() => client.write(tag, value)); }}
+                presenter={presenter}
+                snapshot={snapshot}
+              />
+              <InjectionPanel client={client} config={config} execute={execute} presenter={presenter} snapshot={snapshot} />
+              <LogsPanel client={client} />
+            </>
+          )}
+        </main>
+      </AppShell>
+    </StartupSplash>
   );
 }
