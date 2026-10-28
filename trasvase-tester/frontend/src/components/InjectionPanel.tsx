@@ -40,7 +40,7 @@ export function InjectionPanel({ client, config, execute, presenter, snapshot }:
     }
   };
   const table = (name: "analog_setpoints" | "digital_commands", label: string) => (
-    <Card className={styles.window}>
+    <Card padding="none" className={styles.window}>
       <h3>{label}</h3>
       <div className={styles.scroll}><table>
         <thead><tr><th>Fila</th><th>Tag</th><th>Destino</th><th>Último valor</th><th>Estado</th><th>Set</th><th /></tr></thead>

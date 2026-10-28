@@ -1,4 +1,4 @@
-.heading { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--sc-space-3); }
+.heading { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: var(--sc-space-3); }
 .heading h2, .heading p { margin: 0; }
 .heading p, .toolbar span { color: var(--sc-color-text-muted); }
 .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sc-space-3); margin: var(--sc-space-4) 0; }

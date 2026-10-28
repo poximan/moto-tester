@@ -32,7 +32,7 @@ export function ProductionTables({ config, onSetpoint, presenter, snapshot }: Pr
           const fc = production[0]?.function_code ?? "—";
           const lastRow = production.length > 0 ? Math.max(...production.map((signal) => signal.row)) : "—";
           return (
-            <Card className={styles.window} key={name}>
+            <Card padding="none" className={styles.window} key={name}>
               <div className={styles.title}><strong>{table.label}</strong><span>FC{fc} · inicio {table.start_ref} · offset {table.start_pdu} · prod 0..{lastRow}</span></div>
               <div className={styles.scroll}>
                 <table><thead><tr><th>Fila</th><th>Tag</th><th>Valor</th></tr></thead>

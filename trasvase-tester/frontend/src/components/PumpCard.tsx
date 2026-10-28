@@ -33,7 +33,7 @@ export function PumpCard({ client, connected, execute, presenter, pump, rtuSelec
   );
 
   return (
-    <Card className={styles.card}>
+    <Card padding="compact" className={styles.card}>
       <div className={styles.heading}><h3>Bomba {pump.id}</h3></div>
       <img alt={`Bomba ${pump.id}: ${visual.label}`} className={styles.image} src={`assets/pump_${visual.image}.png`} />
       <strong className={styles.hours}>{presenter.signalText(pump.hours)} h</strong>

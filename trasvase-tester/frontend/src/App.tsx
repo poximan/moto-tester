@@ -19,7 +19,7 @@ export function App() {
     <StartupSplash productName="moto-tester" logoSrc={`${import.meta.env.BASE_URL}assets/trasvase.png`}
       ready={!loading || error !== null}>
       <AppShell productName="Trasvase Tester" sectionName="Moto Tester">
-        <main className={styles.main}>
+        <main className={`sc-page ${styles.main}`}>
           {error && <div className={styles.error} role="alert"><strong>Operación o contrato rechazado.</strong><span>{error}</span></div>}
           {loading && <p className={styles.loading}>Cargando configuración y estado operativo…</p>}
           {config && snapshot && (

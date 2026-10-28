@@ -3,8 +3,8 @@
 .heading p { color: var(--sc-color-text-muted); }
 .heading input, .scroll input[type="number"] { min-height: var(--sc-control-height); padding: var(--sc-space-2); border: 1px solid var(--sc-color-border); border-radius: var(--sc-radius-md); background: var(--sc-color-background); color: var(--sc-color-text); }
 .grid { display: grid; grid-template-columns: repeat(2, minmax(28rem, 1fr)); gap: var(--sc-space-3); }
-.window { min-width: 0; padding: 0; overflow: hidden; }
-.window h3 { margin: 0; padding: var(--sc-space-3); border-bottom: 1px solid var(--sc-color-border); }
+.window { min-width: 0; overflow: hidden; }
+.window h3 { margin: 0; padding: var(--sc-card-padding); border-bottom: 1px solid var(--sc-color-border); }
 .scroll { max-height: 30rem; overflow: auto; }
 .scroll table { width: 100%; border-collapse: collapse; font-size: var(--sc-font-size-sm); }
 .scroll th { position: sticky; top: 0; z-index: 1; background: var(--sc-color-surface-raised); color: var(--sc-color-text-muted); text-align: left; }
